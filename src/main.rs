@@ -1,8 +1,26 @@
 #![allow(unused_imports)]
+use std::io::{Error, ErrorKind};
 use std::{
     io::{Read, Write},
     net::{TcpListener, TcpStream},
 };
+
+enum Command {
+    Ping,
+    Echo(String),
+}
+
+fn parse_command(input: &str) -> Result<Command, Error> {
+    let parts: Vec<&str> = input.split(" ").collect();
+    match parts.as_slice() {
+        ["PING"] => Ok(Command::Ping),
+        ["ECHO", args @ ..] => Ok(Command::Echo(args.join(" "))),
+        _ => Err(Error::new(
+            ErrorKind::InvalidInput,
+            format!("invalid input {}", input),
+        )),
+    }
+}
 
 fn handle_client(mut stream: TcpStream) {
     let mut buf = [0; 512];
@@ -12,7 +30,15 @@ fn handle_client(mut stream: TcpStream) {
         if bytes_read == 0 {
             break;
         }
-        stream.write_all(b"+PONG\r\n").unwrap();
+        let input = std::str::from_utf8(&buf[..bytes_read]).unwrap();
+        let cmd = parse_command(input).unwrap();
+        match cmd {
+            Command::Ping => stream.write_all(b"+PONG\r\n").unwrap(),
+            Command::Echo(s) => {
+                let s = format!("{s}\r\n");
+                stream.write_all(s.as_bytes()).unwrap();
+            }
+        }
     }
 }
 
