@@ -1,6 +1,7 @@
 #![allow(unused_imports)]
 use std::io::{Error, ErrorKind};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use std::{
     io::{Read, Write},
     net::{TcpListener, TcpStream},
@@ -51,16 +52,29 @@ fn handle_command(stream: &mut TcpStream, items: Vec<Vec<u8>>, redis: SharedRedi
         [cmd] if cmd.eq_ignore_ascii_case("PING") => {
             stream.write_all(b"+PONG\r\n").unwrap();
         }
-        [cmd, key, value] if cmd.eq_ignore_ascii_case("SET") => {
+        [cmd, key, value, args @ ..] if cmd.eq_ignore_ascii_case("SET") => {
+            let deadline = match args {
+                [] => None,
+                [cmd, seconds] if cmd.eq_ignore_ascii_case("EX") => {
+                    Some(Instant::now() + Duration::from_secs(seconds.parse().unwrap()))
+                }
+                [cmd, milliseconds] if cmd.eq_ignore_ascii_case("PX") => {
+                    Some(Instant::now() + Duration::from_millis(milliseconds.parse().unwrap()))
+                }
+                _ => {
+                    eprintln!("invalid argument: {:?}", args);
+                    return;
+                }
+            };
             {
                 let mut redis = redis.lock().unwrap();
-                redis.set(key.to_string(), value.to_string());
+                redis.set(key.to_string(), value.to_string(), deadline);
             }
             stream.write_all(b"+OK\r\n").unwrap();
         }
         [cmd, key] if cmd.eq_ignore_ascii_case("GET") => {
             let res = {
-                let redis = redis.lock().unwrap();
+                let mut redis = redis.lock().unwrap();
                 redis.get(key).cloned()
             };
             match res {
