@@ -63,7 +63,6 @@ fn handle_command(stream: &mut TcpStream, items: Vec<Vec<u8>>, redis: SharedRedi
                 let redis = redis.lock().unwrap();
                 redis.get(key).cloned()
             };
-            drop(redis);
             match res {
                 Some(v) => {
                     let v = format!("${}\r\n{}\r\n", v.len(), v.to_string());
