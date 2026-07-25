@@ -5,39 +5,48 @@ use std::{
     net::{TcpListener, TcpStream},
 };
 
-enum Command {
-    Ping,
-    Echo(String),
-}
+mod parser;
+use parser::Parser;
 
-fn parse_command(input: &str) -> Result<Command, Error> {
-    let parts: Vec<&str> = input.split(" ").collect();
-    match parts.as_slice() {
-        ["PING"] => Ok(Command::Ping),
-        ["ECHO", args @ ..] => Ok(Command::Echo(args.join(" "))),
-        _ => Err(Error::new(
-            ErrorKind::InvalidInput,
-            format!("invalid input {}", input),
-        )),
+fn handle_client(mut stream: TcpStream) {
+    let mut parser = Parser::new();
+    let mut tmp = [0u8; 512];
+
+    loop {
+        while let Some(command) = parser.try_parse().unwrap_or_else(|e| {
+            eprintln!("protocol error: {e}");
+            std::process::exit(1); // or handle more gracefully
+        }) {
+            handle_command(&mut stream, command);
+        }
+
+        let n = match stream.read(&mut tmp) {
+            Ok(0) => return,
+            Ok(n) => n,
+            Err(e) => {
+                eprintln!("read error: {e}");
+                return;
+            }
+        };
+        parser.feed(&tmp[..n]);
     }
 }
 
-fn handle_client(mut stream: TcpStream) {
-    let mut buf = [0; 512];
-
-    loop {
-        let bytes_read = stream.read(&mut buf).unwrap();
-        if bytes_read == 0 {
-            break;
+fn handle_command(stream: &mut TcpStream, items: Vec<Vec<u8>>) {
+    let strs: Vec<String> = items
+        .iter()
+        .map(|b| String::from_utf8_lossy(b).to_string())
+        .collect();
+    match strs.as_slice() {
+        [cmd, arg] if cmd.eq_ignore_ascii_case("ECHO") => {
+            let resp = format!("${}\r\n{}\r\n", arg.len(), arg);
+            stream.write_all(resp.as_bytes()).unwrap();
         }
-        let input = std::str::from_utf8(&buf[..bytes_read]).unwrap();
-        let cmd = parse_command(input).unwrap();
-        match cmd {
-            Command::Ping => stream.write_all(b"+PONG\r\n").unwrap(),
-            Command::Echo(s) => {
-                let s = format!("{s}\r\n");
-                stream.write_all(s.as_bytes()).unwrap();
-            }
+        [cmd] if cmd.eq_ignore_ascii_case("PING") => {
+            stream.write_all(b"+PONG\r\n").unwrap();
+        }
+        _ => {
+            stream.write_all(b"-ERR unknown command\r\n").unwrap();
         }
     }
 }
