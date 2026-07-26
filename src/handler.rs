@@ -257,7 +257,10 @@ fn handle_blpop(
                 }
                 return Ok(());
             }
-            Ok(None) => return stream.write_all(b"$-1\r\n"),
+            Ok(None) => {
+                println!("============= OK(NONE)??");
+                return stream.write_all(b"$-1\r\n");
+            }
             Err(_) => return stream.write_all(b"wrong type"),
         }
     }
