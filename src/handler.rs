@@ -254,7 +254,7 @@ fn handle_blpop(
                     if timeout_result.timed_out() {
                         return write!(
                             stream,
-                            "*3\r\n$5\r\nBLOP\r\n${}\r\n{}\r\n${}\r\n{}\r\n",
+                            "*3\r\n$5\r\nBLPOP\r\n${}\r\n{}\r\n${}\r\n{}\r\n",
                             key.len(),
                             key,
                             arg.len(),
