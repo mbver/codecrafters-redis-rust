@@ -140,7 +140,7 @@ impl Redis {
     pub fn lpop(&mut self, key: &str) -> Result<Option<String>, RedisError> {
         match self.get_mut_value(key) {
             Some(Value::String(_)) => Err(RedisError::WrongType),
-            Some(Value::List(l)) => Ok(l.pop_back()),
+            Some(Value::List(l)) => Ok(l.pop_front()),
             None => Ok(None),
         }
     }
