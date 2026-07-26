@@ -224,15 +224,24 @@ fn handle_lpop(
 fn handle_blpop(
     stream: &mut TcpStream,
     key: &String,
-    // arg: &String,
+    arg: &String,
     redis: SharedRedis,
 ) -> io::Result<()> {
+    let Ok(secs) = arg.parse::<u64>() else {
+        eprintln!("wrong timeout argument: {arg}");
+        return Ok(());
+    };
+    let timeout = Duration::from_secs(secs);
     let mut db = redis.lock();
     loop {
         match db.lpop(key, 1) {
             Ok(Some(values)) => {
                 if values.is_empty() {
-                    db = redis.cv.wait(db).unwrap();
+                    let (guard, timeout_result) = redis.cv.wait_timeout(db, timeout).unwrap();
+                    db = guard;
+                    if timeout_result.timed_out() {
+                        return stream.write_all(b"timeout");
+                    }
                     continue;
                 }
                 drop(db);
@@ -274,7 +283,9 @@ fn handle_command(
         [cmd, key, arg @ ..] if cmd.eq_ignore_ascii_case("LPOP") => {
             handle_lpop(stream, key, arg, redis)
         }
-        [cmd, key] if cmd.eq_ignore_ascii_case("BLPOP") => handle_blpop(stream, key, redis),
+        [cmd, key, arg] if cmd.eq_ignore_ascii_case("BLPOP") => {
+            handle_blpop(stream, key, arg, redis)
+        }
         _ => stream.write_all(b"-ERR unknown command\r\n"),
     }
 }
