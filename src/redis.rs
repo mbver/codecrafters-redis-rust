@@ -100,7 +100,7 @@ impl Redis {
         match self.get_mut_value(key) {
             Some(Value::String(_)) => Err(RedisError::WrongType),
             Some(Value::List(l)) => {
-                for v in values.iter().rev() {
+                for v in values {
                     l.push_front(v.clone());
                 }
                 Ok(l.len())
