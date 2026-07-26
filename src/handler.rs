@@ -253,7 +253,7 @@ fn handle_blpop(
                     db = guard;
                     if timeout_result.timed_out() {
                         if res.is_none() {
-                            return stream.write_all(b"$-1\r\n");
+                            return stream.write_all(b"*-1\r\n");
                         }
                         return write!(
                             stream,
