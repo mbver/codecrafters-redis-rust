@@ -96,17 +96,25 @@ impl Redis {
         }
     }
 
-    pub fn lrange(&mut self, key: &str, start: usize, end: usize) -> Vec<String> {
-        if start >= end {
-            return Vec::new();
-        }
+    pub fn lrange(&mut self, key: &str, start: isize, end: isize) -> Vec<String> {
         let Some(l) = self.get_list(key) else {
             return Vec::new();
         };
+        let start = normalize_idx(start, l.len());
+        let end = normalize_idx(end, l.len());
+        if start >= end {
+            return Vec::new();
+        }
+
         if start >= l.len() {
             return Vec::new();
         }
         let end = end.min(l.len() - 1);
         l.range(start..=end).cloned().collect()
     }
+}
+
+fn normalize_idx(idx: isize, length: usize) -> usize {
+    let idx = if idx < 0 { length as isize + idx } else { idx };
+    idx.max(0) as usize
 }

@@ -106,10 +106,10 @@ fn handle_command(
             }
         }
         [cmd, key, start, end] if cmd.eq_ignore_ascii_case("LRANGE") => {
-            let Ok(start) = start.parse::<usize>() else {
+            let Ok(start) = start.parse::<isize>() else {
                 return write!(stream, "invalid value of start: {start}");
             };
-            let Ok(end) = end.parse::<usize>() else {
+            let Ok(end) = end.parse::<isize>() else {
                 return write!(stream, "invalid value of end: {end}");
             };
             let values = {
@@ -129,11 +129,8 @@ fn handle_command(
 }
 
 fn main() {
-    // You can use print statements as follows for debugging, they'll be visible when running tests.
     println!("Logs from your program will appear here!");
     let redis = Arc::new(Mutex::new(Redis::new()));
-    // Uncomment the code below to pass the first stage
-    //
     let listener = TcpListener::bind("127.0.0.1:6379").unwrap();
 
     for stream in listener.incoming() {
