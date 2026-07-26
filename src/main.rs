@@ -92,7 +92,14 @@ fn handle_command(stream: &mut TcpStream, items: Vec<Vec<u8>>, redis: SharedRedi
         }
         [cmd, key, value] if cmd.eq_ignore_ascii_case("RPUSH") => {
             let mut redis = redis.lock().unwrap();
-            redis.rpush(key, value.clone());
+            match redis.rpush(key, value.clone()) {
+                Ok(size) => {
+                    write!(stream, ":{}\r\n", size).unwrap();
+                }
+                Err(_) => {
+                    write!(stream, "wrong type").unwrap();
+                }
+            }
         }
         _ => {
             stream.write_all(b"-ERR unknown command\r\n").unwrap();
