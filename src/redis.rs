@@ -96,6 +96,25 @@ impl Redis {
         }
     }
 
+    pub fn lpush(&mut self, key: &str, values: &[String]) -> Result<usize, RedisError> {
+        match self.get_mut_value(key) {
+            Some(Value::String(_)) => Err(RedisError::WrongType),
+            Some(Value::List(l)) => {
+                for v in values.iter().rev() {
+                    l.push_front(v.clone());
+                }
+                Ok(l.len())
+            }
+            None => {
+                let mut l = VecDeque::new();
+                for v in values {
+                    l.push_back(v.clone());
+                }
+                self.store.insert(key.to_string(), Value::List(l));
+                Ok(values.len())
+            }
+        }
+    }
     pub fn lrange(&mut self, key: &str, start: isize, end: isize) -> Vec<String> {
         let Some(l) = self.get_list(key) else {
             return Vec::new();

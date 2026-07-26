@@ -105,6 +105,18 @@ fn handle_command(
                 Err(_) => stream.write_all(b"wrong type"),
             }
         }
+        [cmd, key, values @ ..] if cmd.eq_ignore_ascii_case("LPUSH") => {
+            let res = {
+                let mut redis = redis.lock().unwrap();
+                redis.lpush(key, values)
+            };
+            match res {
+                Ok(size) => {
+                    write!(stream, ":{}\r\n", size)
+                }
+                Err(_) => stream.write_all(b"wrong type"),
+            }
+        }
         [cmd, key, start, end] if cmd.eq_ignore_ascii_case("LRANGE") => {
             let Ok(start) = start.parse::<isize>() else {
                 return write!(stream, "invalid value of start: {start}");
