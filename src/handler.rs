@@ -1,5 +1,5 @@
 use std::io;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 use std::{
     io::{Read, Write},
@@ -9,7 +9,24 @@ use std::{
 use crate::parser::Parser;
 use crate::redis::Redis;
 
-type SharedRedis = Arc<Mutex<Redis>>;
+pub struct RedisShared {
+    redis: Mutex<Redis>,
+    cv: Condvar,
+}
+
+impl RedisShared {
+    pub fn new() -> Self {
+        Self {
+            redis: Mutex::new(Redis::new()),
+            cv: Condvar::new(),
+        }
+    }
+    fn lock(&self) -> MutexGuard<'_, Redis> {
+        self.redis.lock().unwrap()
+    }
+}
+
+type SharedRedis = Arc<RedisShared>;
 
 pub fn handle_client(mut stream: TcpStream, redis: SharedRedis) {
     let mut parser = Parser::new();
@@ -64,7 +81,7 @@ fn handle_set(
         }
     };
     {
-        let mut redis = redis.lock().unwrap();
+        let mut redis = redis.lock();
         redis.set(key.to_string(), value.to_string(), deadline);
     }
     stream.write_all(b"+OK\r\n")
@@ -72,7 +89,7 @@ fn handle_set(
 
 fn handle_get(stream: &mut TcpStream, key: &String, redis: SharedRedis) -> io::Result<()> {
     let res = {
-        let mut redis = redis.lock().unwrap();
+        let mut redis = redis.lock();
         redis.get_string(key).cloned()
     };
 
@@ -92,11 +109,12 @@ fn handle_rpush(
     redis: SharedRedis,
 ) -> io::Result<()> {
     let res = {
-        let mut redis = redis.lock().unwrap();
+        let mut redis = redis.lock();
         redis.rpush(key, values)
     };
     match res {
         Ok(size) => {
+            redis.cv.notify_all();
             write!(stream, ":{}\r\n", size)
         }
         Err(_) => stream.write_all(b"wrong type"),
@@ -110,11 +128,12 @@ fn handle_lpush(
     redis: SharedRedis,
 ) -> io::Result<()> {
     let res = {
-        let mut redis = redis.lock().unwrap();
+        let mut redis = redis.lock();
         redis.lpush(key, values)
     };
     match res {
         Ok(size) => {
+            redis.cv.notify_all();
             write!(stream, ":{}\r\n", size)
         }
         Err(_) => stream.write_all(b"wrong type"),
@@ -135,7 +154,7 @@ fn handle_lrange(
         return write!(stream, "invalid value of end: {end}");
     };
     let values = {
-        let mut redis = redis.lock().unwrap();
+        let mut redis = redis.lock();
         redis.lrange(key, start, end)
     };
     write!(stream, "*{}\r\n", values.len())?;
@@ -149,7 +168,7 @@ fn handle_lrange(
 
 fn handle_llen(stream: &mut TcpStream, key: &String, redis: SharedRedis) -> io::Result<()> {
     let size = {
-        let mut redis = redis.lock().unwrap();
+        let mut redis = redis.lock();
         redis.llen(key)
     };
     write!(stream, ":{}\r\n", size)
@@ -181,7 +200,7 @@ fn handle_lpop(
     };
 
     let res = {
-        let mut redis = redis.lock().unwrap();
+        let mut redis = redis.lock();
         redis.lpop(key, num)
     };
     match res {
@@ -199,6 +218,29 @@ fn handle_lpop(
             Ok(())
         }
         Err(_) => stream.write_all(b"wrong type"),
+    }
+}
+
+fn handle_blpop(
+    stream: &mut TcpStream,
+    key: &String,
+    // arg: &String,
+    redis: SharedRedis,
+) -> io::Result<()> {
+    let mut db = redis.lock();
+    loop {
+        match db.lpop(key, 1) {
+            Ok(Some(values)) => {
+                if values.is_empty() {
+                    db = redis.cv.wait(db).unwrap();
+                    continue;
+                }
+                drop(db);
+                return write!(stream, "${}\r\n{}\r\n", values[0].len(), values[0]);
+            }
+            Ok(None) => return stream.write_all(b"$-1\r\n"),
+            Err(_) => return stream.write_all(b"wrong type"),
+        }
     }
 }
 fn handle_command(
@@ -232,6 +274,7 @@ fn handle_command(
         [cmd, key, arg @ ..] if cmd.eq_ignore_ascii_case("LPOP") => {
             handle_lpop(stream, key, arg, redis)
         }
+        [cmd, key] if cmd.eq_ignore_ascii_case("BLPOP") => handle_blpop(stream, key, redis),
         _ => stream.write_all(b"-ERR unknown command\r\n"),
     }
 }

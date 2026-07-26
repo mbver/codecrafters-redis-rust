@@ -1,17 +1,18 @@
 use std::net::TcpListener;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 mod parser;
 
 mod redis;
-use redis::Redis;
 
 mod handler;
 use handler::handle_client;
 
+use crate::handler::RedisShared;
+
 fn main() {
     println!("Logs from your program will appear here!");
-    let redis = Arc::new(Mutex::new(Redis::new()));
+    let redis = Arc::new(RedisShared::new());
     let listener = TcpListener::bind("127.0.0.1:6379").unwrap();
 
     for stream in listener.incoming() {
