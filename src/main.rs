@@ -136,6 +136,13 @@ fn handle_command(
             }
             Ok(())
         }
+        [cmd, key] if cmd.eq_ignore_ascii_case("LLEN") => {
+            let size = {
+                let mut redis = redis.lock().unwrap();
+                redis.llen(key)
+            };
+            write!(stream, ":{}\r\n", size)
+        }
         _ => stream.write_all(b"-ERR unknown command\r\n"),
     }
 }

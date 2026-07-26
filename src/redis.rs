@@ -131,6 +131,12 @@ impl Redis {
         let end = end.min(l.len() - 1);
         l.range(start..=end).cloned().collect()
     }
+    pub fn llen(&mut self, key: &str) -> usize {
+        let Some(l) = self.get_list(key) else {
+            return 0;
+        };
+        l.len()
+    }
 }
 
 fn normalize_idx(idx: isize, length: usize) -> usize {
