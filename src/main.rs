@@ -1,5 +1,5 @@
 #![allow(unused_imports)]
-use std::io::{Error, ErrorKind};
+use std::io::{self, Error, ErrorKind};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::{
@@ -26,7 +26,10 @@ fn handle_client(mut stream: TcpStream, redis: SharedRedis) {
             eprintln!("protocol error: {e}");
             std::process::exit(1); // or handle more gracefully
         }) {
-            handle_command(&mut stream, command, redis.clone());
+            if let Err(e) = handle_command(&mut stream, command, redis.clone()) {
+                eprintln!("io error: {:?}", e);
+                return;
+            }
         }
 
         let n = match stream.read(&mut tmp) {
@@ -41,7 +44,11 @@ fn handle_client(mut stream: TcpStream, redis: SharedRedis) {
     }
 }
 
-fn handle_command(stream: &mut TcpStream, items: Vec<Vec<u8>>, redis: SharedRedis) {
+fn handle_command(
+    stream: &mut TcpStream,
+    items: Vec<Vec<u8>>,
+    redis: SharedRedis,
+) -> io::Result<()> {
     let strs: Vec<String> = items
         .iter()
         .map(|b| String::from_utf8_lossy(b).to_string())
@@ -49,11 +56,9 @@ fn handle_command(stream: &mut TcpStream, items: Vec<Vec<u8>>, redis: SharedRedi
     match strs.as_slice() {
         [cmd, arg] if cmd.eq_ignore_ascii_case("ECHO") => {
             let resp = format!("${}\r\n{}\r\n", arg.len(), arg);
-            stream.write_all(resp.as_bytes()).unwrap();
+            stream.write_all(resp.as_bytes())
         }
-        [cmd] if cmd.eq_ignore_ascii_case("PING") => {
-            stream.write_all(b"+PONG\r\n").unwrap();
-        }
+        [cmd] if cmd.eq_ignore_ascii_case("PING") => stream.write_all(b"+PONG\r\n"),
         [cmd, key, value, args @ ..] if cmd.eq_ignore_ascii_case("SET") => {
             let deadline = match args {
                 [] => None,
@@ -65,14 +70,14 @@ fn handle_command(stream: &mut TcpStream, items: Vec<Vec<u8>>, redis: SharedRedi
                 }
                 _ => {
                     eprintln!("invalid argument: {:?}", args);
-                    return;
+                    return Ok(());
                 }
             };
             {
                 let mut redis = redis.lock().unwrap();
                 redis.set(key.to_string(), value.to_string(), deadline);
             }
-            stream.write_all(b"+OK\r\n").unwrap();
+            stream.write_all(b"+OK\r\n")
         }
         [cmd, key] if cmd.eq_ignore_ascii_case("GET") => {
             let res = {
@@ -83,12 +88,10 @@ fn handle_command(stream: &mut TcpStream, items: Vec<Vec<u8>>, redis: SharedRedi
             match res {
                 Some(s) => {
                     let v = format!("${}\r\n{}\r\n", s.len(), s.to_string());
-                    stream.write_all(v.as_bytes()).unwrap();
+                    stream.write_all(v.as_bytes())
                 }
-                None => {
-                    stream.write_all(b"$-1\r\n").unwrap();
-                }
-            };
+                None => stream.write_all(b"$-1\r\n"),
+            }
         }
         [cmd, key, values @ ..] if cmd.eq_ignore_ascii_case("RPUSH") => {
             let res = {
@@ -97,34 +100,31 @@ fn handle_command(stream: &mut TcpStream, items: Vec<Vec<u8>>, redis: SharedRedi
             };
             match res {
                 Ok(size) => {
-                    write!(stream, ":{}\r\n", size).unwrap();
+                    write!(stream, ":{}\r\n", size)
                 }
-                Err(_) => {
-                    write!(stream, "wrong type").unwrap();
-                }
+                Err(_) => stream.write_all(b"wrong type"),
             }
         }
         [cmd, key, start, end] if cmd.eq_ignore_ascii_case("LRANGE") => {
             let Ok(start) = start.parse::<usize>() else {
-                return;
+                return write!(stream, "invalid value of start: {start}");
             };
             let Ok(end) = end.parse::<usize>() else {
-                return;
+                return write!(stream, "invalid value of end: {end}");
             };
             let values = {
                 let mut redis = redis.lock().unwrap();
                 redis.lrange(key, start, end)
             };
-            write!(stream, "*{}\r\n", values.len()).unwrap();
+            write!(stream, "*{}\r\n", values.len())?;
             for v in values {
-                write!(stream, "${}\r\n", v.len()).unwrap();
-                stream.write_all(v.as_bytes()).unwrap();
-                stream.write_all(b"\r\n").unwrap();
+                write!(stream, "${}\r\n", v.len())?;
+                stream.write_all(v.as_bytes())?;
+                stream.write_all(b"\r\n")?;
             }
+            Ok(())
         }
-        _ => {
-            stream.write_all(b"-ERR unknown command\r\n").unwrap();
-        }
+        _ => stream.write_all(b"-ERR unknown command\r\n"),
     }
 }
 
