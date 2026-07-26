@@ -237,11 +237,10 @@ fn handle_blpop(
         match db.lpop(key, 1) {
             Ok(Some(values)) if !values.is_empty() => {
                 drop(db);
-                write!(stream, "*{}\r\n", values.len())?;
+                write!(stream, "*{}\r\n", 1 + values.len())?;
+                write!(stream, "${}\r\n{}\r\n", key.len(), key)?;
                 for v in values {
-                    write!(stream, "${}\r\n", v.len())?;
-                    stream.write_all(v.as_bytes())?;
-                    stream.write_all(b"\r\n")?;
+                    write!(stream, "${}\r\n{}\r\n", v.len(), v)?;
                 }
                 return Ok(());
             }
