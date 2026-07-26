@@ -252,7 +252,14 @@ fn handle_blpop(
                     let (guard, timeout_result) = waiter.wait_timeout(db, timeout).unwrap();
                     db = guard;
                     if timeout_result.timed_out() {
-                        return stream.write_all(b"timeout");
+                        return write!(
+                            stream,
+                            "*3\r\n$5\r\nBLOP\r\n${}\r\n{}\r\n${}\r\n{}\r\n",
+                            key.len(),
+                            key,
+                            arg.len(),
+                            arg
+                        );
                     }
                 }
                 continue;
