@@ -35,7 +35,8 @@ impl Redis {
             }
         }
     }
-    pub fn get(&mut self, key: &str) -> Option<&String> {
+
+    fn get_value(&mut self, key: &str) -> Option<&Value> {
         let expired = self
             .expire
             .get(key)
@@ -45,13 +46,24 @@ impl Redis {
             self.store.remove(key);
             return None;
         }
-        let Some(Value::String(s)) = self.store.get(key) else {
+        self.store.get(key)
+    }
+
+    pub fn get_string(&mut self, key: &str) -> Option<&String> {
+        let Some(Value::String(s)) = self.get_value(key) else {
             return None;
         };
         Some(s)
     }
 
-    pub fn get_mut(&mut self, key: &str) -> Option<&mut Value> {
+    pub fn get_list(&mut self, key: &str) -> Option<&VecDeque<String>> {
+        let Some(Value::List(l)) = self.get_value(key) else {
+            return None;
+        };
+        Some(l)
+    }
+
+    fn get_mut_value(&mut self, key: &str) -> Option<&mut Value> {
         let expired = self
             .expire
             .get(key)
@@ -65,7 +77,7 @@ impl Redis {
     }
 
     pub fn rpush(&mut self, key: &str, values: &[String]) -> Result<usize, RedisError> {
-        match self.get_mut(key) {
+        match self.get_mut_value(key) {
             Some(Value::String(_)) => Err(RedisError::WrongType),
             Some(Value::List(l)) => {
                 for v in values {
@@ -82,5 +94,19 @@ impl Redis {
                 Ok(values.len())
             }
         }
+    }
+
+    pub fn lrange(&mut self, key: &str, start: usize, end: usize) -> Vec<String> {
+        if start >= end {
+            return Vec::new();
+        }
+        let Some(l) = self.get_list(key) else {
+            return Vec::new();
+        };
+        if start >= l.len() {
+            return Vec::new();
+        }
+        let end = end.min(l.len() - 1);
+        l.range(start..=end).cloned().collect()
     }
 }

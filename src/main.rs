@@ -77,7 +77,7 @@ fn handle_command(stream: &mut TcpStream, items: Vec<Vec<u8>>, redis: SharedRedi
         [cmd, key] if cmd.eq_ignore_ascii_case("GET") => {
             let res = {
                 let mut redis = redis.lock().unwrap();
-                redis.get(key).cloned()
+                redis.get_string(key).cloned()
             };
 
             match res {
@@ -91,14 +91,35 @@ fn handle_command(stream: &mut TcpStream, items: Vec<Vec<u8>>, redis: SharedRedi
             };
         }
         [cmd, key, values @ ..] if cmd.eq_ignore_ascii_case("RPUSH") => {
-            let mut redis = redis.lock().unwrap();
-            match redis.rpush(key, values) {
+            let res = {
+                let mut redis = redis.lock().unwrap();
+                redis.rpush(key, values)
+            };
+            match res {
                 Ok(size) => {
                     write!(stream, ":{}\r\n", size).unwrap();
                 }
                 Err(_) => {
                     write!(stream, "wrong type").unwrap();
                 }
+            }
+        }
+        [cmd, key, start, end] if cmd.eq_ignore_ascii_case("LRANGE") => {
+            let Ok(start) = start.parse::<usize>() else {
+                return;
+            };
+            let Ok(end) = end.parse::<usize>() else {
+                return;
+            };
+            let values = {
+                let mut redis = redis.lock().unwrap();
+                redis.lrange(key, start, end)
+            };
+            write!(stream, "*{}\r\n", values.len()).unwrap();
+            for v in values {
+                write!(stream, "${}\r\n", v.len()).unwrap();
+                stream.write_all(v.as_bytes()).unwrap();
+                stream.write_all(b"\r\n").unwrap();
             }
         }
         _ => {
