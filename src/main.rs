@@ -148,10 +148,14 @@ fn handle_command(
                 eprintln!("wrong argument: {:?}", arg);
                 return Ok(());
             }
+            let mut is_array = false;
             let num = match arg.first() {
                 None => 1,
                 Some(v) => match v.parse::<usize>() {
-                    Ok(n) => n,
+                    Ok(n) => {
+                        is_array = true;
+                        n
+                    }
                     Err(_) => {
                         eprintln!("wrong argument {v}");
                         return Ok(());
@@ -166,6 +170,9 @@ fn handle_command(
             match res {
                 Ok(None) => stream.write_all(b"$-1\r\n"),
                 Ok(Some(values)) => {
+                    if !is_array {
+                        return write!(stream, "${}\r\n{}\r\n", values[0].len(), values[0]);
+                    }
                     write!(stream, "*{}\r\n", values.len())?;
                     for v in values {
                         write!(stream, "${}\r\n", v.len())?;
