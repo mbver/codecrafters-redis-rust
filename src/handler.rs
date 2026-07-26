@@ -244,7 +244,7 @@ fn handle_blpop(
                 }
                 return Ok(());
             }
-            Ok(_) => {
+            Ok(res) => {
                 let waiter = db.add_waiter(key);
                 if timeout.is_zero() {
                     db = waiter.wait(db).unwrap();
@@ -252,6 +252,9 @@ fn handle_blpop(
                     let (guard, timeout_result) = waiter.wait_timeout(db, timeout).unwrap();
                     db = guard;
                     if timeout_result.timed_out() {
+                        if res.is_none() {
+                            return stream.write_all(b"$-1\r\n");
+                        }
                         return write!(
                             stream,
                             "*3\r\n$5\r\nBLPOP\r\n${}\r\n{}\r\n${}\r\n{}\r\n",
