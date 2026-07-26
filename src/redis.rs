@@ -64,18 +64,22 @@ impl Redis {
         self.store.get_mut(key)
     }
 
-    pub fn rpush(&mut self, key: &str, value: String) -> Result<usize, RedisError> {
+    pub fn rpush(&mut self, key: &str, values: &[String]) -> Result<usize, RedisError> {
         match self.get_mut(key) {
             Some(Value::String(_)) => Err(RedisError::WrongType),
             Some(Value::List(l)) => {
-                l.push_back(value);
+                for v in values {
+                    l.push_back(v.clone());
+                }
                 Ok(l.len())
             }
             None => {
                 let mut l = VecDeque::new();
-                l.push_back(value);
+                for v in values {
+                    l.push_back(v.clone());
+                }
                 self.store.insert(key.to_string(), Value::List(l));
-                Ok(1)
+                Ok(values.len())
             }
         }
     }
