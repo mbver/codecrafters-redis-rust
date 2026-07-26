@@ -227,11 +227,11 @@ fn handle_blpop(
     arg: &String,
     redis: SharedRedis,
 ) -> io::Result<()> {
-    let Ok(secs) = arg.parse::<u64>() else {
+    let Ok(secs) = arg.parse::<f64>() else {
         eprintln!("wrong timeout argument: {arg}");
         return Ok(());
     };
-    let timeout = Duration::from_secs(secs);
+    let timeout = Duration::from_secs_f64(secs);
     let mut db = redis.lock();
     loop {
         match db.lpop(key, 1) {
