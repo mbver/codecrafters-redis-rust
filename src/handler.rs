@@ -249,7 +249,13 @@ fn handle_blpop(
                     continue;
                 }
                 drop(db);
-                return write!(stream, "${}\r\n{}\r\n", values[0].len(), values[0]);
+                write!(stream, "*{}\r\n", values.len())?;
+                for v in values {
+                    write!(stream, "${}\r\n", v.len())?;
+                    stream.write_all(v.as_bytes())?;
+                    stream.write_all(b"\r\n")?;
+                }
+                return Ok(());
             }
             Ok(None) => return stream.write_all(b"$-1\r\n"),
             Err(_) => return stream.write_all(b"wrong type"),
