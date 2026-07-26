@@ -137,6 +137,13 @@ impl Redis {
         };
         l.len()
     }
+    pub fn lpop(&mut self, key: &str) -> Result<Option<String>, RedisError> {
+        match self.get_mut_value(key) {
+            Some(Value::String(_)) => Err(RedisError::WrongType),
+            Some(Value::List(l)) => Ok(l.pop_back()),
+            None => Ok(None),
+        }
+    }
 }
 
 fn normalize_idx(idx: isize, length: usize) -> usize {

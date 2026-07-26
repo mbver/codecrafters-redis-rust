@@ -143,6 +143,17 @@ fn handle_command(
             };
             write!(stream, ":{}\r\n", size)
         }
+        [cmd, key] if cmd.eq_ignore_ascii_case("LPOP") => {
+            let res = {
+                let mut redis = redis.lock().unwrap();
+                redis.lpop(key)
+            };
+            match res {
+                Ok(None) => stream.write_all(b"$-1\r\n"),
+                Ok(Some(s)) => write!(stream, "${}\r\n{}\r\n", s.len(), s),
+                Err(_) => stream.write_all(b"wrong type"),
+            }
+        }
         _ => stream.write_all(b"-ERR unknown command\r\n"),
     }
 }
