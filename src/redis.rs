@@ -137,10 +137,14 @@ impl Redis {
         };
         l.len()
     }
-    pub fn lpop(&mut self, key: &str) -> Result<Option<String>, RedisError> {
+    pub fn lpop(&mut self, key: &str, num: usize) -> Result<Option<Vec<String>>, RedisError> {
         match self.get_mut_value(key) {
             Some(Value::String(_)) => Err(RedisError::WrongType),
-            Some(Value::List(l)) => Ok(l.pop_front()),
+            Some(Value::List(l)) => {
+                let num = num.min(l.len());
+                let res = l.drain(0..num).collect();
+                Ok(Some(res))
+            }
             None => Ok(None),
         }
     }
