@@ -141,7 +141,6 @@ impl Redis {
         match self.get_mut_value(key) {
             Some(Value::String(_)) => Err(RedisError::WrongType),
             Some(Value::List(l)) => {
-                println!("=========== got list?");
                 let num = num.min(l.len());
                 let res = l.drain(0..num).collect();
                 Ok(Some(res))

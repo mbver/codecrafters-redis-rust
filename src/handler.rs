@@ -235,19 +235,7 @@ fn handle_blpop(
     let mut db = redis.lock();
     loop {
         match db.lpop(key, 1) {
-            Ok(Some(values)) => {
-                if values.is_empty() {
-                    if timeout.is_zero() {
-                        db = redis.cv.wait(db).unwrap();
-                    } else {
-                        let (guard, timeout_result) = redis.cv.wait_timeout(db, timeout).unwrap();
-                        db = guard;
-                        if timeout_result.timed_out() {
-                            return stream.write_all(b"timeout");
-                        }
-                    }
-                    continue;
-                }
+            Ok(Some(values)) if !values.is_empty() => {
                 drop(db);
                 write!(stream, "*{}\r\n", values.len())?;
                 for v in values {
@@ -257,9 +245,17 @@ fn handle_blpop(
                 }
                 return Ok(());
             }
-            Ok(None) => {
-                println!("============= OK(NONE)??");
-                return stream.write_all(b"$-1\r\n");
+            Ok(_) => {
+                if timeout.is_zero() {
+                    db = redis.cv.wait(db).unwrap();
+                } else {
+                    let (guard, timeout_result) = redis.cv.wait_timeout(db, timeout).unwrap();
+                    db = guard;
+                    if timeout_result.timed_out() {
+                        return stream.write_all(b"timeout");
+                    }
+                }
+                continue;
             }
             Err(_) => return stream.write_all(b"wrong type"),
         }
