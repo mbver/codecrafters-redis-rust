@@ -13,6 +13,8 @@ use parser::Parser;
 mod redis;
 use redis::Redis;
 
+use crate::redis::Value;
+
 type SharedRedis = Arc<Mutex<Redis>>;
 
 fn handle_client(mut stream: TcpStream, redis: SharedRedis) {
@@ -77,15 +79,20 @@ fn handle_command(stream: &mut TcpStream, items: Vec<Vec<u8>>, redis: SharedRedi
                 let mut redis = redis.lock().unwrap();
                 redis.get(key).cloned()
             };
+
             match res {
-                Some(v) => {
-                    let v = format!("${}\r\n{}\r\n", v.len(), v.to_string());
+                Some(s) => {
+                    let v = format!("${}\r\n{}\r\n", s.len(), s.to_string());
                     stream.write_all(v.as_bytes()).unwrap();
                 }
                 None => {
                     stream.write_all(b"$-1\r\n").unwrap();
                 }
             };
+        }
+        [cmd, key, value] if cmd.eq_ignore_ascii_case("RPUSH") => {
+            let mut redis = redis.lock().unwrap();
+            redis.rpush(key, value.clone());
         }
         _ => {
             stream.write_all(b"-ERR unknown command\r\n").unwrap();
