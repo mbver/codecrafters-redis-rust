@@ -237,10 +237,14 @@ fn handle_blpop(
         match db.lpop(key, 1) {
             Ok(Some(values)) => {
                 if values.is_empty() {
-                    let (guard, timeout_result) = redis.cv.wait_timeout(db, timeout).unwrap();
-                    db = guard;
-                    if timeout_result.timed_out() {
-                        return stream.write_all(b"timeout");
+                    if timeout.is_zero() {
+                        db = redis.cv.wait(db).unwrap();
+                    } else {
+                        let (guard, timeout_result) = redis.cv.wait_timeout(db, timeout).unwrap();
+                        db = guard;
+                        if timeout_result.timed_out() {
+                            return stream.write_all(b"timeout");
+                        }
                     }
                     continue;
                 }
