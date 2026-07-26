@@ -1,6 +1,3 @@
-use std::io::{Read, Write};
-use std::net::TcpStream;
-
 #[derive(Debug)]
 enum ParseState {
     // waiting for "*<count>\r\n"
