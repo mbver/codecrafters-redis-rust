@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, VecDeque},
+    sync::{Arc, Condvar},
     time::Instant,
 };
 
@@ -15,6 +16,7 @@ pub enum RedisError {
 pub struct Redis {
     store: HashMap<String, Value>,
     expire: HashMap<String, Instant>,
+    waiters: HashMap<String, Arc<Condvar>>,
 }
 
 impl Redis {
@@ -22,6 +24,7 @@ impl Redis {
         Self {
             store: HashMap::new(),
             expire: HashMap::new(),
+            waiters: HashMap::new(),
         }
     }
     pub fn set(&mut self, key: String, value: String, deadline: Option<Instant>) {
@@ -146,6 +149,17 @@ impl Redis {
                 Ok(Some(res))
             }
             None => Ok(None),
+        }
+    }
+    pub fn add_waiter(&mut self, key: &str) -> Arc<Condvar> {
+        self.waiters
+            .entry(key.to_string())
+            .or_insert(Arc::new(Condvar::new()))
+            .clone()
+    }
+    pub fn notify_one(&mut self, key: &str) {
+        if let Some(cv) = self.waiters.get(key) {
+            cv.notify_one();
         }
     }
 }

@@ -1,5 +1,5 @@
 use std::io;
-use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 use std::{
     io::{Read, Write},
@@ -11,14 +11,12 @@ use crate::redis::Redis;
 
 pub struct RedisShared {
     redis: Mutex<Redis>,
-    cv: Condvar,
 }
 
 impl RedisShared {
     pub fn new() -> Self {
         Self {
             redis: Mutex::new(Redis::new()),
-            cv: Condvar::new(),
         }
     }
     fn lock(&self) -> MutexGuard<'_, Redis> {
@@ -108,17 +106,18 @@ fn handle_rpush(
     values: &[String],
     redis: SharedRedis,
 ) -> io::Result<()> {
-    let res = {
+    let output = {
         let mut redis = redis.lock();
-        redis.rpush(key, values)
-    };
-    match res {
-        Ok(size) => {
-            redis.cv.notify_all();
-            write!(stream, ":{}\r\n", size)
+        let res = redis.rpush(key, values);
+        match res {
+            Ok(size) => {
+                redis.notify_one(key);
+                format!(":{}\r\n", size)
+            }
+            Err(_) => "wrong type".to_string(),
         }
-        Err(_) => stream.write_all(b"wrong type"),
-    }
+    };
+    stream.write_all(output.as_bytes())
 }
 
 fn handle_lpush(
@@ -127,17 +126,18 @@ fn handle_lpush(
     values: &[String],
     redis: SharedRedis,
 ) -> io::Result<()> {
-    let res = {
+    let output = {
         let mut redis = redis.lock();
-        redis.lpush(key, values)
-    };
-    match res {
-        Ok(size) => {
-            redis.cv.notify_all();
-            write!(stream, ":{}\r\n", size)
+        let res = redis.lpush(key, values);
+        match res {
+            Ok(size) => {
+                redis.notify_one(key);
+                format!(":{}\r\n", size)
+            }
+            Err(_) => "wrong type".to_string(),
         }
-        Err(_) => stream.write_all(b"wrong type"),
-    }
+    };
+    stream.write_all(output.as_bytes())
 }
 
 fn handle_lrange(
@@ -245,10 +245,11 @@ fn handle_blpop(
                 return Ok(());
             }
             Ok(_) => {
+                let waiter = db.add_waiter(key);
                 if timeout.is_zero() {
-                    db = redis.cv.wait(db).unwrap();
+                    db = waiter.wait(db).unwrap();
                 } else {
-                    let (guard, timeout_result) = redis.cv.wait_timeout(db, timeout).unwrap();
+                    let (guard, timeout_result) = waiter.wait_timeout(db, timeout).unwrap();
                     db = guard;
                     if timeout_result.timed_out() {
                         return stream.write_all(b"timeout");
