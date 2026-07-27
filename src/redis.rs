@@ -88,31 +88,24 @@ impl Stream {
         Ok(())
     }
 
+    fn next_sq(&self, ms: u64) -> u64 {
+        match self.entries.last() {
+            Some(last) if last.id.ms == ms => last.id.seq + 1,
+            Some(_) => 0,
+            None if ms == 0 => 1,
+            None => 0,
+        }
+    }
     fn parse_entry_id(&self, s: &str) -> Result<EntryId, RedisError> {
         let (ms, sq) = s.split_once('-').ok_or(RedisError::StreamIdParseError)?;
         let ms = ms
             .parse::<u64>()
             .map_err(|_| RedisError::StreamIdParseError)?;
-        let seq = if sq != "*" {
+        let seq = if sq == "*" {
+            self.next_sq(ms)
+        } else {
             sq.parse::<u64>()
                 .map_err(|_| RedisError::StreamIdParseError)?
-        } else {
-            match self.entries.last() {
-                Some(last) => {
-                    if last.id.ms == ms {
-                        last.id.seq + 1
-                    } else {
-                        0
-                    }
-                }
-                None => {
-                    if ms == 0 {
-                        1
-                    } else {
-                        0
-                    }
-                }
-            }
         };
         Ok(EntryId { ms, seq })
     }
