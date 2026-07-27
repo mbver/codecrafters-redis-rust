@@ -212,7 +212,7 @@ impl Redis {
                 self.store.insert(key.to_string(), Value::Stream(stream));
             }
         }
-        Ok(key.to_string())
+        Ok(id.to_string())
     }
 }
 
