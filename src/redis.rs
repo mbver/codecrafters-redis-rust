@@ -32,6 +32,12 @@ impl EntryId {
     pub const ZERO: Self = Self { ms: 0, seq: 0 };
 }
 
+impl Display for EntryId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}-{}", self.ms, self.seq)
+    }
+}
+
 #[derive(Clone)]
 pub struct StreamEntry {
     id: EntryId,
@@ -275,15 +281,15 @@ impl Redis {
                 }
             }
         };
-        let stream_id = stream.parse_entry_id(id)?;
-        stream.validate(stream_id)?;
-        let mut entry = StreamEntry::new(stream_id);
+        let entry_id = stream.parse_entry_id(id)?;
+        stream.validate(entry_id)?;
+        let mut entry = StreamEntry::new(entry_id);
         for chunk in args.chunks_exact(2) {
             let (k, v) = (&chunk[0], &chunk[1]);
             entry.add(k.clone(), v.clone());
         }
         stream.add(entry);
-        Ok(id.to_string())
+        Ok(entry_id.to_string())
     }
 }
 
