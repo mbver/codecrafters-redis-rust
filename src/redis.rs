@@ -98,7 +98,13 @@ impl Stream {
                 .map_err(|_| RedisError::StreamIdParseError)?
         } else {
             match self.entries.last() {
-                Some(last) => last.id.seq + 1,
+                Some(last) => {
+                    if last.id.ms == ms {
+                        last.id.seq + 1
+                    } else {
+                        last.id.seq
+                    }
+                }
                 None => {
                     if ms == 0 {
                         1
