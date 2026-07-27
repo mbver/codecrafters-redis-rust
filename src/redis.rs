@@ -2,7 +2,7 @@ use std::{
     collections::{HashMap, VecDeque},
     fmt::Display,
     sync::{Arc, Condvar},
-    time::Instant,
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 #[derive(Debug)]
@@ -96,7 +96,22 @@ impl Stream {
             None => 0,
         }
     }
+    fn generate_id(&self) -> EntryId {
+        let ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+        let seq = match self.entries.last() {
+            Some(last) if last.id.ms == ms => last.id.seq + 1,
+            _ => 0,
+        };
+        EntryId { ms, seq }
+    }
+
     fn parse_entry_id(&self, s: &str) -> Result<EntryId, RedisError> {
+        if s == "*" {
+            return Ok(self.generate_id());
+        }
         let (ms, sq) = s.split_once('-').ok_or(RedisError::StreamIdParseError)?;
         let ms = ms
             .parse::<u64>()
