@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::parser::Parser;
-use crate::redis::{Redis, Value};
+use crate::redis::{Redis, RedisError, Value};
 
 pub struct RedisShared {
     redis: Mutex<Redis>,
@@ -114,7 +114,7 @@ fn handle_rpush(
                 redis.notify_one(key);
                 format!(":{}\r\n", size)
             }
-            Err(_) => "wrong type".to_string(),
+            Err(e) => format!("{e}"),
         }
     };
     stream.write_all(output.as_bytes())
@@ -134,7 +134,7 @@ fn handle_lpush(
                 redis.notify_one(key);
                 format!(":{}\r\n", size)
             }
-            Err(_) => "wrong type".to_string(),
+            Err(e) => format!("{e}"),
         }
     };
     stream.write_all(output.as_bytes())
@@ -217,7 +217,7 @@ fn handle_lpop(
             }
             Ok(())
         }
-        Err(_) => stream.write_all(b"wrong type"),
+        Err(e) => write!(stream, "{e}"),
     }
 }
 
@@ -267,7 +267,7 @@ fn handle_blpop(
                 }
                 continue;
             }
-            Err(_) => return stream.write_all(b"wrong type"),
+            Err(e) => return write!(stream, "{e}"),
         }
     }
 }
@@ -302,7 +302,12 @@ fn handle_xadd(
     };
     match res {
         Ok(id) => write!(stream, "${}\r\n{}\r\n", id.len(), id),
-        Err(_) => stream.write_all(b"wrong type"),
+        Err(e) => {
+            match e {
+                RedisError::InvalidStreamId => stream.write_all(b"-ERR The ID specified in XADD is equal or smaller than the target stream top item\r\n"),
+                e => write!(stream, "-ERR {e}")
+            }
+        }
     }
 }
 
