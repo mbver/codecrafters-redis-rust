@@ -39,7 +39,7 @@ impl Redis {
         }
     }
 
-    fn get_value(&mut self, key: &str) -> Option<&Value> {
+    pub fn get_value(&mut self, key: &str) -> Option<&Value> {
         let expired = self
             .expire
             .get(key)

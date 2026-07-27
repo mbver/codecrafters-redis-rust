@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::parser::Parser;
-use crate::redis::Redis;
+use crate::redis::{Redis, Value};
 
 pub struct RedisShared {
     redis: Mutex<Redis>,
@@ -271,6 +271,19 @@ fn handle_blpop(
         }
     }
 }
+
+fn handle_type(stream: &mut TcpStream, key: &str, redis: SharedRedis) -> io::Result<()> {
+    let t = {
+        let mut redis = redis.lock();
+        match redis.get_value(key) {
+            Some(Value::String(_)) => "string",
+            Some(Value::List(_)) => "list",
+            None => "none",
+        }
+    };
+    write!(stream, "+{t}\r\n")
+}
+
 fn handle_command(
     stream: &mut TcpStream,
     items: Vec<Vec<u8>>,
@@ -305,6 +318,7 @@ fn handle_command(
         [cmd, key, arg] if cmd.eq_ignore_ascii_case("BLPOP") => {
             handle_blpop(stream, key, arg, redis)
         }
+        [cmd, key] if cmd.eq_ignore_ascii_case("TYPE") => handle_type(stream, key, redis),
         _ => stream.write_all(b"-ERR unknown command\r\n"),
     }
 }
