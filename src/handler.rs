@@ -278,10 +278,32 @@ fn handle_type(stream: &mut TcpStream, key: &str, redis: SharedRedis) -> io::Res
         match redis.get_value(key) {
             Some(Value::String(_)) => "string",
             Some(Value::List(_)) => "list",
+            Some(Value::Stream(_)) => "stream",
             None => "none",
         }
     };
     write!(stream, "+{t}\r\n")
+}
+
+fn handle_xadd(
+    stream: &mut TcpStream,
+    key: &str,
+    id: &str,
+    args: &[String],
+    redis: SharedRedis,
+) -> io::Result<()> {
+    if !args.len().is_multiple_of(2) {
+        eprintln!("number of arguments is not even");
+        return Ok(());
+    }
+    let res = {
+        let mut redis = redis.lock();
+        redis.x_add(key, id, args)
+    };
+    match res {
+        Ok(id) => write!(stream, "${}\r\n{}\r\n", id.len(), id),
+        Err(_) => stream.write_all(b"wrong type"),
+    }
 }
 
 fn handle_command(
@@ -319,6 +341,9 @@ fn handle_command(
             handle_blpop(stream, key, arg, redis)
         }
         [cmd, key] if cmd.eq_ignore_ascii_case("TYPE") => handle_type(stream, key, redis),
+        [cmd, key, id, args @ ..] if cmd.eq_ignore_ascii_case("XADD") => {
+            handle_xadd(stream, key, id, args, redis)
+        }
         _ => stream.write_all(b"-ERR unknown command\r\n"),
     }
 }

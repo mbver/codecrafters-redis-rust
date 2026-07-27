@@ -5,9 +5,44 @@ use std::{
 };
 
 #[derive(Clone)]
+pub struct StreamEntry {
+    id: String,
+    fields: Vec<(String, String)>,
+}
+
+impl StreamEntry {
+    pub fn new(id: String) -> Self {
+        Self {
+            id: id,
+            fields: Vec::new(),
+        }
+    }
+    pub fn add(&mut self, key: String, value: String) {
+        self.fields.push((key, value));
+    }
+}
+
+#[derive(Clone)]
+pub struct Stream {
+    entries: Vec<StreamEntry>,
+}
+
+impl Stream {
+    pub fn new() -> Self {
+        Self {
+            entries: Vec::new(),
+        }
+    }
+    pub fn add(&mut self, entry: StreamEntry) {
+        self.entries.push(entry);
+    }
+}
+
+#[derive(Clone)]
 pub enum Value {
     String(String),
     List(VecDeque<String>),
+    Stream(Stream),
 }
 
 pub enum RedisError {
@@ -81,13 +116,13 @@ impl Redis {
 
     pub fn rpush(&mut self, key: &str, values: &[String]) -> Result<usize, RedisError> {
         match self.get_mut_value(key) {
-            Some(Value::String(_)) => Err(RedisError::WrongType),
             Some(Value::List(l)) => {
                 for v in values {
                     l.push_back(v.clone());
                 }
                 Ok(l.len())
             }
+            Some(_) => Err(RedisError::WrongType),
             None => {
                 let mut l = VecDeque::new();
                 for v in values {
@@ -101,13 +136,13 @@ impl Redis {
 
     pub fn lpush(&mut self, key: &str, values: &[String]) -> Result<usize, RedisError> {
         match self.get_mut_value(key) {
-            Some(Value::String(_)) => Err(RedisError::WrongType),
             Some(Value::List(l)) => {
                 for v in values {
                     l.push_front(v.clone());
                 }
                 Ok(l.len())
             }
+            Some(_) => Err(RedisError::WrongType),
             None => {
                 let mut l = VecDeque::new();
                 for v in values {
@@ -142,12 +177,12 @@ impl Redis {
     }
     pub fn lpop(&mut self, key: &str, num: usize) -> Result<Option<Vec<String>>, RedisError> {
         match self.get_mut_value(key) {
-            Some(Value::String(_)) => Err(RedisError::WrongType),
             Some(Value::List(l)) => {
                 let num = num.min(l.len());
                 let res = l.drain(0..num).collect();
                 Ok(Some(res))
             }
+            Some(_) => Err(RedisError::WrongType),
             None => Ok(None),
         }
     }
@@ -161,6 +196,23 @@ impl Redis {
         if let Some(cv) = self.waiters.get(key) {
             cv.notify_one();
         }
+    }
+    pub fn x_add(&mut self, key: &str, id: &str, args: &[String]) -> Result<String, RedisError> {
+        let mut entry = StreamEntry::new(id.to_string());
+        for chunk in args.chunks_exact(2) {
+            let (k, v) = (&chunk[0], &chunk[1]);
+            entry.add(k.clone(), v.clone());
+        }
+        match self.get_mut_value(key) {
+            Some(Value::Stream(s)) => s.add(entry),
+            Some(_) => return Err(RedisError::WrongType),
+            None => {
+                let mut stream = Stream::new();
+                stream.add(entry);
+                self.store.insert(key.to_string(), Value::Stream(stream));
+            }
+        }
+        Ok(key.to_string())
     }
 }
 
