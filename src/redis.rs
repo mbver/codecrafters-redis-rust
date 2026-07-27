@@ -82,19 +82,18 @@ impl Stream {
     }
 
     fn validate(&self, entry_id: StreamId) -> Result<(), RedisError> {
+        if entry_id == StreamId::ZERO {
+            return Err(RedisError::InvalidStreamId(
+                "The ID specified in XADD must be greater than 0-0".to_string(),
+            ));
+        }
         match self.entries.last() {
             Some(last) => {
                 if entry_id <= last.id {
                     return Err( RedisError::InvalidStreamId("The ID specified in XADD is equal or smaller than the target stream top item".to_string()));
                 }
             }
-            None => {
-                if entry_id == StreamId::ZERO {
-                    return Err(RedisError::InvalidStreamId(
-                        "The ID specified in XADD must be greater than 0-0".to_string(),
-                    ));
-                }
-            }
+            None => {}
         }
         Ok(())
     }
