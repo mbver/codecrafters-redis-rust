@@ -1,7 +1,6 @@
 use std::{
     collections::{HashMap, VecDeque},
     fmt::Display,
-    str::FromStr,
     sync::{Arc, Condvar},
     time::Instant,
 };
@@ -24,38 +23,23 @@ impl Display for RedisError {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct StreamId {
+pub struct EntryId {
     ms: u64,
-    sq: u64,
+    seq: u64,
 }
 
-impl StreamId {
-    pub const ZERO: Self = Self { ms: 0, sq: 0 };
-}
-
-impl FromStr for StreamId {
-    type Err = RedisError;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (ms, sq) = s.split_once('-').ok_or(RedisError::StreamIdParseError)?;
-        Ok(StreamId {
-            ms: ms
-                .parse::<u64>()
-                .map_err(|_| RedisError::StreamIdParseError)?,
-            sq: sq
-                .parse::<u64>()
-                .map_err(|_| RedisError::StreamIdParseError)?,
-        })
-    }
+impl EntryId {
+    pub const ZERO: Self = Self { ms: 0, seq: 0 };
 }
 
 #[derive(Clone)]
 pub struct StreamEntry {
-    id: StreamId,
+    id: EntryId,
     fields: Vec<(String, String)>,
 }
 
 impl StreamEntry {
-    pub fn new(id: StreamId) -> Self {
+    pub fn new(id: EntryId) -> Self {
         Self {
             id: id,
             fields: Vec::new(),
@@ -81,8 +65,8 @@ impl Stream {
         self.entries.push(entry);
     }
 
-    fn validate(&self, entry_id: StreamId) -> Result<(), RedisError> {
-        if entry_id == StreamId::ZERO {
+    fn validate(&self, entry_id: EntryId) -> Result<(), RedisError> {
+        if entry_id == EntryId::ZERO {
             return Err(RedisError::InvalidStreamId(
                 "The ID specified in XADD must be greater than 0-0".to_string(),
             ));
@@ -96,6 +80,29 @@ impl Stream {
             None => {}
         }
         Ok(())
+    }
+
+    fn parse_entry_id(&self, s: &str) -> Result<EntryId, RedisError> {
+        let (ms, sq) = s.split_once('-').ok_or(RedisError::StreamIdParseError)?;
+        let ms = ms
+            .parse::<u64>()
+            .map_err(|_| RedisError::StreamIdParseError)?;
+        let seq = if sq != "*" {
+            sq.parse::<u64>()
+                .map_err(|_| RedisError::StreamIdParseError)?
+        } else {
+            match self.entries.last() {
+                Some(last) => last.id.seq + 1,
+                None => {
+                    if ms == 0 {
+                        1
+                    } else {
+                        0
+                    }
+                }
+            }
+        };
+        Ok(EntryId { ms, seq })
     }
 }
 
@@ -256,25 +263,26 @@ impl Redis {
         }
     }
     pub fn x_add(&mut self, key: &str, id: &str, args: &[String]) -> Result<String, RedisError> {
-        let stream_id = StreamId::from_str(id)?;
+        let stream = {
+            loop {
+                match self.get_mut_value(key) {
+                    Some(Value::Stream(s)) => break s,
+                    Some(_) => return Err(RedisError::WrongType),
+                    None => {
+                        let stream = Stream::new();
+                        self.store.insert(key.to_string(), Value::Stream(stream));
+                    }
+                }
+            }
+        };
+        let stream_id = stream.parse_entry_id(id)?;
+        stream.validate(stream_id)?;
         let mut entry = StreamEntry::new(stream_id);
         for chunk in args.chunks_exact(2) {
             let (k, v) = (&chunk[0], &chunk[1]);
             entry.add(k.clone(), v.clone());
         }
-        match self.get_mut_value(key) {
-            Some(Value::Stream(s)) => {
-                s.validate(entry.id)?;
-                s.add(entry)
-            }
-            Some(_) => return Err(RedisError::WrongType),
-            None => {
-                let mut stream = Stream::new();
-                stream.validate(entry.id)?;
-                stream.add(entry);
-                self.store.insert(key.to_string(), Value::Stream(stream));
-            }
-        }
+        stream.add(entry);
         Ok(id.to_string())
     }
 }
