@@ -102,7 +102,7 @@ impl Stream {
                     if last.id.ms == ms {
                         last.id.seq + 1
                     } else {
-                        last.id.seq
+                        0
                     }
                 }
                 None => {
