@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::parser::Parser;
-use crate::redis::{Redis, RedisError, Value};
+use crate::redis::{Redis, Value};
 
 pub struct RedisShared {
     redis: Mutex<Redis>,
@@ -302,12 +302,7 @@ fn handle_xadd(
     };
     match res {
         Ok(id) => write!(stream, "${}\r\n{}\r\n", id.len(), id),
-        Err(e) => {
-            match e {
-                RedisError::InvalidStreamId => stream.write_all(b"-ERR The ID specified in XADD is equal or smaller than the target stream top item\r\n"),
-                e => write!(stream, "-ERR {e}")
-            }
-        }
+        Err(e) => write!(stream, "-ERR {e}\r\n"),
     }
 }
 

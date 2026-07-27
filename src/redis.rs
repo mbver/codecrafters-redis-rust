@@ -10,7 +10,7 @@ use std::{
 pub enum RedisError {
     WrongType,
     StreamIdParseError,
-    InvalidStreamId,
+    InvalidStreamId(String),
 }
 
 impl Display for RedisError {
@@ -18,7 +18,7 @@ impl Display for RedisError {
         match self {
             RedisError::WrongType => write!(f, "wrong type"),
             RedisError::StreamIdParseError => write!(f, "stream id parse error"),
-            RedisError::InvalidStreamId => write!(f, "invalid stream id"),
+            RedisError::InvalidStreamId(e) => write!(f, "{e}"),
         }
     }
 }
@@ -81,9 +81,22 @@ impl Stream {
         self.entries.push(entry);
     }
 
-    fn validate(&self, entry_id: StreamId) -> bool {
-        let last = self.entries.last().map_or(StreamId::ZERO, |e| e.id);
-        entry_id > last
+    fn validate(&self, entry_id: StreamId) -> Result<(), RedisError> {
+        match self.entries.last() {
+            Some(last) => {
+                if entry_id <= last.id {
+                    return Err( RedisError::InvalidStreamId("The ID specified in XADD is equal or smaller than the target stream top item".to_string()));
+                }
+            }
+            None => {
+                if entry_id == StreamId::ZERO {
+                    return Err(RedisError::InvalidStreamId(
+                        "The ID specified in XADD must be greater than 0-0".to_string(),
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -252,17 +265,13 @@ impl Redis {
         }
         match self.get_mut_value(key) {
             Some(Value::Stream(s)) => {
-                if !s.validate(entry.id) {
-                    return Err(RedisError::InvalidStreamId);
-                }
+                s.validate(entry.id)?;
                 s.add(entry)
             }
             Some(_) => return Err(RedisError::WrongType),
             None => {
                 let mut stream = Stream::new();
-                if !stream.validate(entry.id) {
-                    return Err(RedisError::InvalidStreamId);
-                }
+                stream.validate(entry.id)?;
                 stream.add(entry);
                 self.store.insert(key.to_string(), Value::Stream(stream));
             }
