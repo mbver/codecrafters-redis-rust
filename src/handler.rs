@@ -285,6 +285,10 @@ fn handle_type(stream: &mut TcpStream, key: &str, redis: SharedRedis) -> io::Res
     write!(stream, "+{t}\r\n")
 }
 
+fn is_at_least_two_and_even(len: usize) -> bool {
+    len >= 2 && len.is_multiple_of(2)
+}
+
 fn handle_xadd(
     stream: &mut TcpStream,
     key: &str,
@@ -292,9 +296,8 @@ fn handle_xadd(
     args: &[String],
     redis: SharedRedis,
 ) -> io::Result<()> {
-    if !args.len().is_multiple_of(2) {
-        eprintln!("number of arguments is not even");
-        return Ok(());
+    if !is_at_least_two_and_even(args.len()) {
+        return write!(stream, "-ERR: wrong number of arguments: {}", args.len());
     }
     let res = {
         let mut redis = redis.lock();
@@ -328,6 +331,34 @@ fn handle_xrange(
         Err(e) => {
             write!(stream, "-ERR {e}\r\n")
         }
+    }
+}
+
+fn handle_xread(stream: &mut TcpStream, args: &[String], redis: SharedRedis) -> io::Result<()> {
+    let len = args.len();
+    if !is_at_least_two_and_even(len) {
+        return write!(stream, "-ERR wrong number of arguments: {}", len);
+    }
+    let n = len / 2;
+    let pairs: Vec<(&String, &String)> = args[..n].iter().zip(args[n..].iter()).collect();
+    let res = {
+        let mut redis = redis.lock();
+        redis.x_read(&pairs)
+    };
+    match res {
+        Ok(values) => {
+            write!(stream, "*{}\r\n", values.len())?;
+            for v in values {
+                write!(stream, "*2\r\n")?;
+                write!(stream, "${}\r\n{}\r\n", v.0.len(), v.0)?;
+                write!(stream, "*{}\r\n", v.1.len())?;
+                for entry in v.1 {
+                    entry.write_bulk(stream)?;
+                }
+            }
+            Ok(())
+        }
+        Err(e) => write!(stream, "-ERR {e}"),
     }
 }
 
@@ -371,6 +402,11 @@ fn handle_command(
         }
         [cmd, key, start_id, end_id] if cmd.eq_ignore_ascii_case("XRANGE") => {
             handle_xrange(stream, key, start_id, end_id, redis)
+        }
+        [cmd, subcmd, args @ ..]
+            if cmd.eq_ignore_ascii_case("XREAD") && subcmd.eq_ignore_ascii_case("STREAMS") =>
+        {
+            handle_xread(stream, args, redis)
         }
         _ => stream.write_all(b"-ERR unknown command\r\n"),
     }

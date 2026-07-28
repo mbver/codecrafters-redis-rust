@@ -219,11 +219,20 @@ impl Redis {
         Some(s)
     }
 
-    pub fn get_list(&mut self, key: &str) -> Option<&VecDeque<String>> {
-        let Some(Value::List(l)) = self.get_value(key) else {
-            return None;
-        };
-        Some(l)
+    pub fn get_list(&mut self, key: &str) -> Result<Option<&VecDeque<String>>, RedisError> {
+        match self.get_mut_value(key) {
+            Some(Value::List(l)) => Ok(Some(l)),
+            Some(_) => Err(RedisError::WrongType),
+            None => Ok(None),
+        }
+    }
+
+    pub fn get_stream(&mut self, key: &str) -> Result<Option<&Stream>, RedisError> {
+        match self.get_mut_value(key) {
+            Some(Value::Stream(s)) => Ok(Some(s)),
+            Some(_) => Err(RedisError::WrongType),
+            None => Ok(None),
+        }
     }
 
     fn get_mut_list(&mut self, key: &str) -> Result<Option<&mut VecDeque<String>>, RedisError> {
@@ -288,7 +297,8 @@ impl Redis {
     }
 
     pub fn lrange(&mut self, key: &str, start: isize, end: isize) -> Vec<String> {
-        let Some(l) = self.get_list(key) else {
+        let Ok(Some(l)) = self.get_list(key) else {
+            // TODO: handle error
             return Vec::new();
         };
         let start = normalize_idx(start, l.len());
@@ -305,7 +315,8 @@ impl Redis {
     }
 
     pub fn llen(&mut self, key: &str) -> usize {
-        let Some(l) = self.get_list(key) else {
+        let Ok(Some(l)) = self.get_list(key) else {
+            // TODO: handle error
             return 0;
         };
         l.len()
@@ -380,6 +391,25 @@ impl Redis {
             .filter(|entry| entry.id >= start_id && entry.id <= end_id)
             .cloned()
             .collect())
+    }
+
+    pub fn x_read(
+        &mut self,
+        pairs: &[(&String, &String)],
+    ) -> Result<Vec<(String, Vec<StreamEntry>)>, RedisError> {
+        let mut result = Vec::<(String, Vec<StreamEntry>)>::new();
+        for (key, start_id) in pairs {
+            let start_id = EntryId::from_str(start_id)?;
+            let mut entries = Vec::new();
+            match self.get_stream(key)? {
+                Some(s) => {
+                    entries.extend(s.entries.iter().filter(|e| e.id > start_id).cloned());
+                }
+                None => {}
+            }
+            result.push((key.to_string(), entries));
+        }
+        Ok(result)
     }
 }
 
