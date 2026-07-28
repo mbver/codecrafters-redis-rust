@@ -319,7 +319,7 @@ fn handle_xrange(
     };
     match res {
         Ok(entries) => {
-            write!(stream, "*{}", entries.len())?;
+            write!(stream, "*{}\r\n", entries.len())?;
             for e in entries {
                 e.write_bulk(stream)?
             }
