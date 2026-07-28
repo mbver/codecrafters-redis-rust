@@ -438,6 +438,7 @@ impl Redis {
                 Ok(num.clone())
             }
             None => {
+                println!("=========== not found?");
                 self.set(key.to_string(), "1".to_string(), None);
                 Ok(1)
             }
