@@ -459,7 +459,7 @@ fn handle_command(
         [cmd, option, ms, subcmd, key, id]
             if cmd.eq_ignore_ascii_case("XREAD")
                 && option.eq_ignore_ascii_case("BLOCK")
-                && subcmd == "STREAMS" =>
+                && subcmd.eq_ignore_ascii_case("STREAMS") =>
         {
             println!("=============== handle block xread?");
             handle_block_xread(stream, key, id, ms, redis)
