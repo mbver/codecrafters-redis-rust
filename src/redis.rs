@@ -83,9 +83,8 @@ impl StreamEntry {
         let id = self.id.to_string();
         write!(w, "*2\r\n")?;
         write!(w, "${}\r\n{}\r\n", id.len(), id)?;
-        write!(w, "*{}\r\n", self.fields.len())?;
+        write!(w, "*{}\r\n", 2 * self.fields.len())?;
         for (k, v) in &self.fields {
-            write!(w, "*2\r\n")?;
             write!(w, "${}\r\n{}\r\n", k.len(), k)?;
             write!(w, "${}\r\n{}\r\n", v.len(), v)?;
         }
