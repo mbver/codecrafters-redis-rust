@@ -88,15 +88,16 @@ fn handle_set(
 fn handle_get(stream: &mut TcpStream, key: &String, redis: SharedRedis) -> io::Result<()> {
     let res = {
         let mut redis = redis.lock();
-        redis.get_string(key).cloned()
+        redis.get(key)
     };
 
     match res {
-        Some(s) => {
+        Ok(Some(s)) => {
             let v = format!("${}\r\n{}\r\n", s.len(), s.to_string());
             stream.write_all(v.as_bytes())
         }
-        None => stream.write_all(b"$-1\r\n"),
+        Ok(None) => stream.write_all(b"$-1\r\n"),
+        Err(e) => write!(stream, "-ERR {e}\r\n"),
     }
 }
 

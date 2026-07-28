@@ -223,11 +223,13 @@ impl Redis {
         self.store.get(key)
     }
 
-    pub fn get_string(&mut self, key: &str) -> Option<&String> {
-        let Some(Value::String(s)) = self.get_value(key) else {
-            return None;
-        };
-        Some(s)
+    pub fn get(&mut self, key: &str) -> Result<Option<String>, RedisError> {
+        match self.get_value(key) {
+            Some(Value::String(s)) => Ok(Some(s.clone())),
+            Some(Value::Integer(n)) => Ok(Some(n.to_string())),
+            Some(_) => Err(RedisError::WrongType),
+            None => Ok(None),
+        }
     }
 
     pub fn get_list(&mut self, key: &str) -> Result<Option<&VecDeque<String>>, RedisError> {
