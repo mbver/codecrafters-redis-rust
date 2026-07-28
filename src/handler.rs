@@ -464,6 +464,9 @@ fn handle_command(
             println!("=============== handle block xread?");
             handle_block_xread(stream, key, id, ms, redis)
         }
-        _ => stream.write_all(b"-ERR unknown command\r\n"),
+        _ => {
+            println!("================ unknown command?");
+            return stream.write_all(b"-ERR unknown command\r\n");
+        }
     }
 }
