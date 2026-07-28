@@ -397,7 +397,10 @@ fn handle_block_xread(
                 }
                 continue;
             }
-            Err(e) => return write!(stream, "{e}"),
+            Err(e) => {
+                println!("============ receive error");
+                return write!(stream, "-ERR {e}\r\n");
+            }
         }
     }
 }
