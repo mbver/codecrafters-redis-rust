@@ -175,6 +175,7 @@ impl Stream {
 
 #[derive(Clone)]
 pub enum Value {
+    Integer(u64),
     String(String),
     List(VecDeque<String>),
     Stream(Stream),
@@ -195,7 +196,10 @@ impl Redis {
         }
     }
     pub fn set(&mut self, key: String, value: String, deadline: Option<Instant>) {
-        self.store.insert(key.clone(), Value::String(value));
+        match value.parse::<u64>() {
+            Ok(i) => self.store.insert(key.clone(), Value::Integer(i)),
+            Err(_) => self.store.insert(key.clone(), Value::String(value)),
+        };
         match deadline {
             Some(deadline) => {
                 let _ = self.expire.insert(key, deadline);
@@ -253,6 +257,14 @@ impl Redis {
     fn get_mut_stream(&mut self, key: &str) -> Result<Option<&mut Stream>, RedisError> {
         match self.get_mut_value(key) {
             Some(Value::Stream(s)) => Ok(Some(s)),
+            Some(_) => Err(RedisError::WrongType),
+            None => Ok(None),
+        }
+    }
+
+    fn get_mut_number(&mut self, key: &str) -> Result<Option<&mut u64>, RedisError> {
+        match self.get_mut_value(key) {
+            Some(Value::Integer(i)) => Ok(Some(i)),
             Some(_) => Err(RedisError::WrongType),
             None => Ok(None),
         }
@@ -417,6 +429,19 @@ impl Redis {
             result.push((key.to_string(), entries));
         }
         Ok(result)
+    }
+
+    pub fn incr(&mut self, key: &str) -> Result<u64, RedisError> {
+        match self.get_mut_number(key)? {
+            Some(num) => {
+                *num += 1;
+                Ok(num.clone())
+            }
+            None => {
+                self.set(key.to_string(), "1".to_string(), None);
+                Ok(1)
+            }
+        }
     }
 }
 

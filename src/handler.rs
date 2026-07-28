@@ -276,6 +276,7 @@ fn handle_type(stream: &mut TcpStream, key: &str, redis: SharedRedis) -> io::Res
     let t = {
         let mut redis = redis.lock();
         match redis.get_value(key) {
+            Some(Value::Integer(_)) => "integer",
             Some(Value::String(_)) => "string",
             Some(Value::List(_)) => "list",
             Some(Value::Stream(_)) => "stream",
@@ -412,6 +413,21 @@ fn handle_block_xread(
     }
 }
 
+fn handle_incr(stream: &mut TcpStream, key: &str, redis: SharedRedis) -> io::Result<()> {
+    let res = {
+        let mut redis = redis.lock();
+        redis.incr(key)
+    };
+    match res {
+        Ok(num) => {
+            write!(stream, ":{}\r\n", num)
+        }
+        Err(e) => {
+            write!(stream, "-ERR {e}\r\n")
+        }
+    }
+}
+
 fn handle_command(
     stream: &mut TcpStream,
     items: Vec<Vec<u8>>,
@@ -465,6 +481,7 @@ fn handle_command(
         {
             handle_block_xread(stream, ms, key, id, redis)
         }
+        [cmd, key] if cmd.eq_ignore_ascii_case("INCR") => handle_incr(stream, key, redis),
         _ => {
             return stream.write_all(b"-ERR unknown command\r\n");
         }
