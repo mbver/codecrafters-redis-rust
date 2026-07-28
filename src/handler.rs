@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::parser::Parser;
-use crate::redis::{Redis, StreamEntry, Value};
+use crate::redis::{EntryId, Redis, StreamEntry, Value};
 
 pub struct RedisShared {
     redis: Mutex<Redis>,
@@ -379,8 +379,16 @@ fn handle_block_xread(
     };
     let timeout = Duration::from_millis(ms);
     let mut db = redis.lock();
+    let id = if id == "$" {
+        match db.get_stream(key) {
+            Ok(Some(s)) => s.last_id().to_string(),
+            _ => EntryId::ZERO.to_string(),
+        }
+    } else {
+        id.to_string()
+    };
     loop {
-        match db.x_read(&[(key, id)]) {
+        match db.x_read(&[(key, &id)]) {
             Ok(values) if !values[0].1.is_empty() => {
                 return write_x_read(stream, &values);
             }

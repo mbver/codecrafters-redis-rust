@@ -164,6 +164,13 @@ impl Stream {
         };
         Ok(EntryId { ms, seq })
     }
+
+    pub fn last_id(&self) -> EntryId {
+        match self.entries.last() {
+            Some(entry) => entry.id,
+            None => EntryId::ZERO,
+        }
+    }
 }
 
 #[derive(Clone)]
