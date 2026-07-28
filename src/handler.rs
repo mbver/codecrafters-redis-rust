@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::parser::Parser;
-use crate::redis::{Redis, Value};
+use crate::redis::{Redis, StreamEntry, Value};
 
 pub struct RedisShared {
     redis: Mutex<Redis>,
@@ -221,6 +221,7 @@ fn handle_lpop(
     }
 }
 
+// TODO: consolidate the L/R semantics
 fn handle_blpop(
     stream: &mut TcpStream,
     key: &String,
@@ -228,8 +229,7 @@ fn handle_blpop(
     redis: SharedRedis,
 ) -> io::Result<()> {
     let Ok(secs) = arg.parse::<f64>() else {
-        eprintln!("wrong timeout argument: {arg}");
-        return Ok(());
+        return write!(stream, "-ERR invalid timeout: {arg}\r\n");
     };
     let timeout = Duration::from_secs_f64(secs);
     let mut db = redis.lock();
@@ -299,14 +299,17 @@ fn handle_xadd(
     if !is_at_least_two_and_even(args.len()) {
         return write!(stream, "-ERR: wrong number of arguments: {}", args.len());
     }
-    let res = {
+    let output = {
         let mut redis = redis.lock();
-        redis.x_add(key, id, args)
+        match redis.x_add(key, id, args) {
+            Ok(id) => {
+                redis.notify_one(key);
+                format!("${}\r\n{}\r\n", id.len(), id)
+            }
+            Err(e) => format!("-ERR {e}\r\n"),
+        }
     };
-    match res {
-        Ok(id) => write!(stream, "${}\r\n{}\r\n", id.len(), id),
-        Err(e) => write!(stream, "-ERR {e}\r\n"),
-    }
+    stream.write_all(output.as_bytes())
 }
 
 fn handle_xrange(
@@ -346,19 +349,56 @@ fn handle_xread(stream: &mut TcpStream, args: &[String], redis: SharedRedis) -> 
         redis.x_read(&pairs)
     };
     match res {
-        Ok(values) => {
-            write!(stream, "*{}\r\n", values.len())?;
-            for v in values {
-                write!(stream, "*2\r\n")?;
-                write!(stream, "${}\r\n{}\r\n", v.0.len(), v.0)?;
-                write!(stream, "*{}\r\n", v.1.len())?;
-                for entry in v.1 {
-                    entry.write_bulk(stream)?;
-                }
-            }
-            Ok(())
-        }
+        Ok(values) => write_x_read(stream, &values),
         Err(e) => write!(stream, "-ERR {e}"),
+    }
+}
+
+fn write_x_read(stream: &mut TcpStream, values: &[(String, Vec<StreamEntry>)]) -> io::Result<()> {
+    write!(stream, "*{}\r\n", values.len())?;
+    for v in values {
+        write!(stream, "*2\r\n")?;
+        write!(stream, "${}\r\n{}\r\n", v.0.len(), v.0)?;
+        write!(stream, "*{}\r\n", v.1.len())?;
+        for entry in &v.1 {
+            entry.write_bulk(stream)?;
+        }
+    }
+    Ok(())
+}
+
+fn handle_block_xread(
+    stream: &mut TcpStream,
+    ms: &str,
+    key: &String,
+    id: &String,
+    redis: SharedRedis,
+) -> io::Result<()> {
+    let Ok(ms) = ms.parse::<u64>() else {
+        return write!(stream, "-ERR invalid timeout: {ms}\r\n");
+    };
+    let timeout = Duration::from_millis(ms);
+    let mut db = redis.lock();
+    loop {
+        match db.x_read(&[(key, id)]) {
+            Ok(values) if !values[0].1.is_empty() => {
+                return write_x_read(stream, &values);
+            }
+            Ok(_) => {
+                let waiter = db.add_waiter(key);
+                if timeout.is_zero() {
+                    db = waiter.wait(db).unwrap();
+                } else {
+                    let (guard, timeout_result) = waiter.wait_timeout(db, timeout).unwrap();
+                    db = guard;
+                    if timeout_result.timed_out() {
+                        return stream.write_all(b"*-1\r\n");
+                    }
+                }
+                continue;
+            }
+            Err(e) => return write!(stream, "{e}"),
+        }
     }
 }
 
@@ -407,6 +447,13 @@ fn handle_command(
             if cmd.eq_ignore_ascii_case("XREAD") && subcmd.eq_ignore_ascii_case("STREAMS") =>
         {
             handle_xread(stream, args, redis)
+        }
+        [cmd, option, ms, subcmd, key, id]
+            if cmd.eq_ignore_ascii_case("XREAD")
+                && option.eq_ignore_ascii_case("BLOCK")
+                && subcmd == "STREAMS" =>
+        {
+            handle_block_xread(stream, key, id, ms, redis)
         }
         _ => stream.write_all(b"-ERR unknown command\r\n"),
     }
