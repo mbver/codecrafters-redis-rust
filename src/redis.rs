@@ -369,7 +369,7 @@ impl Redis {
         } else {
             EntryId::from_str(start_id)?
         };
-        let end_id = if end_id == "-" {
+        let end_id = if end_id == "-" || end_id == "+" {
             EntryId::MAX
         } else {
             EntryId::from_str(end_id)?
