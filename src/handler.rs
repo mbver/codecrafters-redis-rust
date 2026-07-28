@@ -306,6 +306,31 @@ fn handle_xadd(
     }
 }
 
+fn handle_xrange(
+    stream: &mut TcpStream,
+    key: &str,
+    start_id: &str,
+    end_id: &str,
+    redis: SharedRedis,
+) -> io::Result<()> {
+    let res = {
+        let mut redis = redis.lock();
+        redis.x_range(key, start_id, end_id)
+    };
+    match res {
+        Ok(entries) => {
+            write!(stream, "*{}", entries.len())?;
+            for e in entries {
+                e.write_bulk(stream)?
+            }
+            Ok(())
+        }
+        Err(e) => {
+            write!(stream, "-ERR {e}\r\n")
+        }
+    }
+}
+
 fn handle_command(
     stream: &mut TcpStream,
     items: Vec<Vec<u8>>,
@@ -343,6 +368,9 @@ fn handle_command(
         [cmd, key] if cmd.eq_ignore_ascii_case("TYPE") => handle_type(stream, key, redis),
         [cmd, key, id, args @ ..] if cmd.eq_ignore_ascii_case("XADD") => {
             handle_xadd(stream, key, id, args, redis)
+        }
+        [cmd, key, start_id, end_id] if cmd.eq_ignore_ascii_case("XRANGE") => {
+            handle_xrange(stream, key, start_id, end_id, redis)
         }
         _ => stream.write_all(b"-ERR unknown command\r\n"),
     }

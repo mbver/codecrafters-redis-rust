@@ -1,8 +1,11 @@
 use std::{
     collections::{HashMap, VecDeque},
     fmt::Display,
+    io::{self, Write},
+    str::FromStr,
     sync::{Arc, Condvar},
     time::{Instant, SystemTime, UNIX_EPOCH},
+    u64,
 };
 
 #[derive(Debug)]
@@ -38,6 +41,27 @@ impl Display for EntryId {
     }
 }
 
+impl FromStr for EntryId {
+    type Err = RedisError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (ms, seq) = match s.split_once('-') {
+            Some((ms, seq)) => (ms, Some(seq)),
+            None => (s, None),
+        };
+
+        let ms = ms
+            .parse::<u64>()
+            .map_err(|_| RedisError::StreamIdParseError)?;
+        let seq = match seq {
+            Some(seq) => seq
+                .parse::<u64>()
+                .map_err(|_| RedisError::StreamIdParseError)?,
+            None => u64::MAX,
+        };
+        Ok(EntryId { ms, seq })
+    }
+}
+
 #[derive(Clone)]
 pub struct StreamEntry {
     id: EntryId,
@@ -53,6 +77,18 @@ impl StreamEntry {
     }
     pub fn add(&mut self, key: String, value: String) {
         self.fields.push((key, value));
+    }
+
+    pub fn write_bulk<W: Write>(&self, w: &mut W) -> io::Result<()> {
+        let id = self.id.to_string();
+        write!(w, "*2\r\n")?;
+        write!(w, "${}\r\n{}\r\n", id.len(), id)?;
+        write!(w, "*{}\r\n", self.fields.len())?;
+        for (k, v) in &self.fields {
+            write!(w, "${}\r\n{}\r\n", k.len(), k)?;
+            write!(w, "${}\r\n{}\r\n", v.len(), v)?;
+        }
+        Ok(())
     }
 }
 
@@ -186,6 +222,22 @@ impl Redis {
         Some(l)
     }
 
+    fn get_mut_list(&mut self, key: &str) -> Result<Option<&mut VecDeque<String>>, RedisError> {
+        match self.get_mut_value(key) {
+            Some(Value::List(l)) => Ok(Some(l)),
+            Some(_) => Err(RedisError::WrongType),
+            None => Ok(None),
+        }
+    }
+
+    fn get_mut_stream(&mut self, key: &str) -> Result<Option<&mut Stream>, RedisError> {
+        match self.get_mut_value(key) {
+            Some(Value::Stream(s)) => Ok(Some(s)),
+            Some(_) => Err(RedisError::WrongType),
+            None => Ok(None),
+        }
+    }
+
     fn get_mut_value(&mut self, key: &str) -> Option<&mut Value> {
         let expired = self
             .expire
@@ -200,44 +252,37 @@ impl Redis {
     }
 
     pub fn rpush(&mut self, key: &str, values: &[String]) -> Result<usize, RedisError> {
-        match self.get_mut_value(key) {
-            Some(Value::List(l)) => {
-                for v in values {
-                    l.push_back(v.clone());
+        let list = loop {
+            match self.get_mut_list(key)? {
+                Some(list) => break list,
+                None => {
+                    self.store
+                        .insert(key.to_string(), Value::List(VecDeque::new()));
                 }
-                Ok(l.len())
             }
-            Some(_) => Err(RedisError::WrongType),
-            None => {
-                let mut l = VecDeque::new();
-                for v in values {
-                    l.push_back(v.clone());
-                }
-                self.store.insert(key.to_string(), Value::List(l));
-                Ok(values.len())
-            }
+        };
+        for v in values {
+            list.push_back(v.clone());
         }
+        Ok(list.len())
     }
 
     pub fn lpush(&mut self, key: &str, values: &[String]) -> Result<usize, RedisError> {
-        match self.get_mut_value(key) {
-            Some(Value::List(l)) => {
-                for v in values {
-                    l.push_front(v.clone());
+        let list = loop {
+            match self.get_mut_list(key)? {
+                Some(list) => break list,
+                None => {
+                    self.store
+                        .insert(key.to_string(), Value::List(VecDeque::new()));
                 }
-                Ok(l.len())
             }
-            Some(_) => Err(RedisError::WrongType),
-            None => {
-                let mut l = VecDeque::new();
-                for v in values {
-                    l.push_back(v.clone());
-                }
-                self.store.insert(key.to_string(), Value::List(l));
-                Ok(values.len())
-            }
+        };
+        for v in values {
+            list.push_front(v.clone());
         }
+        Ok(list.len())
     }
+
     pub fn lrange(&mut self, key: &str, start: isize, end: isize) -> Vec<String> {
         let Some(l) = self.get_list(key) else {
             return Vec::new();
@@ -254,6 +299,7 @@ impl Redis {
         let end = end.min(l.len() - 1);
         l.range(start..=end).cloned().collect()
     }
+
     pub fn llen(&mut self, key: &str) -> usize {
         let Some(l) = self.get_list(key) else {
             return 0;
@@ -285,12 +331,11 @@ impl Redis {
     pub fn x_add(&mut self, key: &str, id: &str, args: &[String]) -> Result<String, RedisError> {
         let stream = {
             loop {
-                match self.get_mut_value(key) {
-                    Some(Value::Stream(s)) => break s,
-                    Some(_) => return Err(RedisError::WrongType),
+                match self.get_mut_stream(key)? {
+                    Some(s) => break s,
                     None => {
-                        let stream = Stream::new();
-                        self.store.insert(key.to_string(), Value::Stream(stream));
+                        self.store
+                            .insert(key.to_string(), Value::Stream(Stream::new()));
                     }
                 }
             }
@@ -304,6 +349,25 @@ impl Redis {
         }
         stream.add(entry);
         Ok(entry_id.to_string())
+    }
+
+    pub fn x_range(
+        &mut self,
+        key: &str,
+        start_id: &str,
+        end_id: &str,
+    ) -> Result<Vec<StreamEntry>, RedisError> {
+        let Some(stream) = self.get_mut_stream(key)? else {
+            return Ok(Vec::new());
+        };
+        let start_id = EntryId::from_str(start_id)?;
+        let end_id = EntryId::from_str(end_id)?;
+        Ok(stream
+            .entries
+            .iter()
+            .filter(|entry| entry.id >= start_id && entry.id <= end_id)
+            .cloned()
+            .collect())
     }
 }
 
