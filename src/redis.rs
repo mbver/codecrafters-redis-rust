@@ -33,6 +33,10 @@ pub struct EntryId {
 
 impl EntryId {
     pub const ZERO: Self = Self { ms: 0, seq: 0 };
+    pub const MAX: Self = Self {
+        ms: u64::MAX,
+        seq: u64::MAX,
+    };
 }
 
 impl Display for EntryId {
@@ -360,8 +364,16 @@ impl Redis {
         let Some(stream) = self.get_mut_stream(key)? else {
             return Ok(Vec::new());
         };
-        let start_id = EntryId::from_str(start_id)?;
-        let end_id = EntryId::from_str(end_id)?;
+        let start_id = if start_id == "-" {
+            EntryId::ZERO
+        } else {
+            EntryId::from_str(start_id)?
+        };
+        let end_id = if end_id == "-" {
+            EntryId::MAX
+        } else {
+            EntryId::from_str(end_id)?
+        };
         Ok(stream
             .entries
             .iter()
