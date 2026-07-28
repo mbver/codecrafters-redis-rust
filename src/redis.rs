@@ -409,6 +409,7 @@ impl Redis {
             }
             result.push((key.to_string(), entries));
         }
+        println!("============== xread returns");
         Ok(result)
     }
 }

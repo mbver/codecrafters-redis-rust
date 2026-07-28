@@ -381,6 +381,7 @@ fn handle_block_xread(
     let timeout = Duration::from_millis(ms);
     let mut db = redis.lock();
     loop {
+        println!("============ gonna call x_read");
         match db.x_read(&[(key, id)]) {
             Ok(values) if !values[0].1.is_empty() => {
                 println!("============ write x read");
