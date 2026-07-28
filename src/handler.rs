@@ -461,6 +461,7 @@ fn handle_command(
                 && option.eq_ignore_ascii_case("BLOCK")
                 && subcmd == "STREAMS" =>
         {
+            println!("=============== handle block xread?");
             handle_block_xread(stream, key, id, ms, redis)
         }
         _ => stream.write_all(b"-ERR unknown command\r\n"),
