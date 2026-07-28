@@ -463,7 +463,7 @@ fn handle_command(
                 && subcmd.eq_ignore_ascii_case("STREAMS") =>
         {
             println!("=============== handle block xread?");
-            handle_block_xread(stream, key, id, ms, redis)
+            handle_block_xread(stream, ms, key, id, redis)
         }
         _ => {
             println!("================ unknown command?");
