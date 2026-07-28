@@ -303,7 +303,6 @@ fn handle_xadd(
         let mut redis = redis.lock();
         match redis.x_add(key, id, args) {
             Ok(id) => {
-                println!("========= gonna notify");
                 redis.notify_one(key);
                 format!("${}\r\n{}\r\n", id.len(), id)
             }
@@ -376,20 +375,16 @@ fn handle_block_xread(
     redis: SharedRedis,
 ) -> io::Result<()> {
     let Ok(ms) = ms.parse::<u64>() else {
-        println!("====== ms parse error? {}", ms);
         return write!(stream, "-ERR invalid timeout: {ms}\r\n");
     };
     let timeout = Duration::from_millis(ms);
     let mut db = redis.lock();
     loop {
-        println!("============ gonna call x_read");
         match db.x_read(&[(key, id)]) {
             Ok(values) if !values[0].1.is_empty() => {
-                println!("============ write x read");
                 return write_x_read(stream, &values);
             }
             Ok(_) => {
-                println!("================ add waiter");
                 let waiter = db.add_waiter(key);
                 if timeout.is_zero() {
                     db = waiter.wait(db).unwrap();
@@ -397,14 +392,12 @@ fn handle_block_xread(
                     let (guard, timeout_result) = waiter.wait_timeout(db, timeout).unwrap();
                     db = guard;
                     if timeout_result.timed_out() {
-                        println!("============ receive error");
                         return stream.write_all(b"*-1\r\n");
                     }
                 }
                 continue;
             }
             Err(e) => {
-                println!("============ receive error");
                 return write!(stream, "-ERR {e}\r\n");
             }
         }
@@ -462,11 +455,9 @@ fn handle_command(
                 && option.eq_ignore_ascii_case("BLOCK")
                 && subcmd.eq_ignore_ascii_case("STREAMS") =>
         {
-            println!("=============== handle block xread?");
             handle_block_xread(stream, ms, key, id, redis)
         }
         _ => {
-            println!("================ unknown command?");
             return stream.write_all(b"-ERR unknown command\r\n");
         }
     }
