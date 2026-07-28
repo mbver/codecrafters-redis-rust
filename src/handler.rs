@@ -97,7 +97,7 @@ fn handle_get(stream: &mut TcpStream, key: &String, redis: SharedRedis) -> io::R
             stream.write_all(v.as_bytes())
         }
         Ok(None) => stream.write_all(b"$-1\r\n"),
-        Err(_) => write!(stream, "-ERR value is not an integer or out of range\r\n"),
+        Err(_) => write!(stream, "-ERR {e}\r\n"),
     }
 }
 
@@ -424,7 +424,7 @@ fn handle_incr(stream: &mut TcpStream, key: &str, redis: SharedRedis) -> io::Res
             write!(stream, ":{}\r\n", num)
         }
         Err(e) => {
-            write!(stream, "-ERR {e}\r\n")
+            write!(stream, "-ERR value is not an integer or out of range\r\n")
         }
     }
 }
