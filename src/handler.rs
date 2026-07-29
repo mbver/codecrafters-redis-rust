@@ -79,6 +79,10 @@ impl Client {
         }
     }
     fn handle_command(&mut self, stream: &mut TcpStream, command: Vec<String>) -> io::Result<()> {
+        match command.as_slice() {
+            [cmd] if cmd.eq_ignore_ascii_case("EXEC") => return self.handle_exec(stream),
+            _ => {}
+        }
         if let Some(tx) = self.transaction.as_mut() {
             tx.queue.push(command);
             return stream.write_all(b"+QUEUED\r\n");
@@ -129,7 +133,6 @@ impl Client {
             }
             [cmd, key] if cmd.eq_ignore_ascii_case("INCR") => self.handle_incr(stream, key),
             [cmd] if cmd.eq_ignore_ascii_case("MULTI") => self.handle_multi(stream),
-            [cmd] if cmd.eq_ignore_ascii_case("EXEC") => self.handle_exec(stream),
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
             }
