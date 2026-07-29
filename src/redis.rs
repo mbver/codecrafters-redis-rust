@@ -463,10 +463,10 @@ impl Redis {
     }
 
     pub fn mark_dirty(&mut self, key: &str) {
-        println!("======== mark dirty: {}", key);
         let Some(dirty) = self.watch_list.get_mut(key) else {
             return;
         };
+        println!("======== mark dirty: {}", key);
         *dirty = true;
     }
 
