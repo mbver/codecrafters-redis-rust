@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Display;
 use std::io;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -39,15 +40,32 @@ impl Transaction {
     }
 }
 
-pub struct Client {
+#[derive(Clone)]
+pub enum Role {
+    Master,
+    Replicator,
+}
+
+impl Display for Role {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Role::Master => write!(f, "master"),
+            Role::Replicator => write!(f, "replicator"),
+        }
+    }
+}
+
+pub struct Handler {
+    role: Role,
     redis: SharedRedis,
     transaction: Option<Transaction>,
     watch_list: HashMap<String, u64>,
 }
 
-impl Client {
-    pub fn new(redis: SharedRedis) -> Self {
+impl Handler {
+    pub fn new(role: Role, redis: SharedRedis) -> Self {
         Self {
+            role,
             redis,
             transaction: None,
             watch_list: HashMap::new(),
@@ -143,6 +161,7 @@ impl Client {
             }
             [cmd, key] if cmd.eq_ignore_ascii_case("INCR") => self.handle_incr(stream, key),
             [cmd] if cmd.eq_ignore_ascii_case("MULTI") => self.handle_multi(stream),
+            [cmd, subcmd] if cmd.eq_ignore_ascii_case("INFO") => self.handle_info(stream, subcmd),
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
             }
@@ -554,6 +573,16 @@ impl Client {
     fn handle_unwatch(&mut self, stream: &mut TcpStream) -> io::Result<()> {
         self.watch_list.clear();
         write!(stream, "+OK\r\n")
+    }
+    fn handle_info(&mut self, stream: &mut TcpStream, subcmd: &str) -> io::Result<()> {
+        match subcmd {
+            "replication" => {
+                let role = format!("role:{}", self.role);
+                write!(stream, "${}\r\n{}\r\n", role.len(), role)?;
+            }
+            _ => {}
+        }
+        Ok(())
     }
 }
 

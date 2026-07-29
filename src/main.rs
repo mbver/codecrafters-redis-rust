@@ -7,7 +7,7 @@ mod redis;
 
 mod handler;
 
-use crate::handler::{Client, RedisShared};
+use crate::handler::{Handler, RedisShared, Role};
 
 fn main() {
     println!("Logs from your program will appear here!");
@@ -22,13 +22,19 @@ fn main() {
         },
         _ => 6379,
     };
+    let role = if port == 6379 {
+        Role::Master
+    } else {
+        Role::Replicator
+    };
+
     let redis = Arc::new(RedisShared::new());
     let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
 
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                let mut client = Client::new(redis.clone());
+                let mut client = Handler::new(role.clone(), redis.clone());
                 std::thread::spawn(move || {
                     client.handle(stream);
                 });
