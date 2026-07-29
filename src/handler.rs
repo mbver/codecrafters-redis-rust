@@ -57,6 +57,10 @@ impl Client {
                 eprintln!("protocol error: {e}");
                 std::process::exit(1); // or handle more gracefully
             }) {
+                let command: Vec<String> = command
+                    .iter()
+                    .map(|b| String::from_utf8_lossy(b).to_string())
+                    .collect();
                 if let Err(e) = self.handle_command(&mut stream, command) {
                     eprintln!("io error: {:?}", e);
                     return;
@@ -74,16 +78,8 @@ impl Client {
             parser.feed(&tmp[..n]);
         }
     }
-    fn handle_command(&mut self, stream: &mut TcpStream, items: Vec<Vec<u8>>) -> io::Result<()> {
-        let strs: Vec<String> = items
-            .iter()
-            .map(|b| String::from_utf8_lossy(b).to_string())
-            .collect();
-        if let Some(tx) = self.transaction.as_mut() {
-            tx.queue.push(strs);
-            return stream.write_all(b"+QUEUED\r\n");
-        }
-        match strs.as_slice() {
+    fn handle_command(&mut self, stream: &mut TcpStream, command: Vec<String>) -> io::Result<()> {
+        match command.as_slice() {
             [cmd, arg] if cmd.eq_ignore_ascii_case("ECHO") => self.handle_echo(stream, arg),
 
             [cmd] if cmd.eq_ignore_ascii_case("PING") => stream.write_all(b"+PONG\r\n"),
@@ -129,6 +125,7 @@ impl Client {
             }
             [cmd, key] if cmd.eq_ignore_ascii_case("INCR") => self.handle_incr(stream, key),
             [cmd] if cmd.eq_ignore_ascii_case("MULTI") => self.handle_multi(stream),
+            [cmd] if cmd.eq_ignore_ascii_case("EXEC") => self.handle_exec(stream),
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
             }
@@ -494,6 +491,16 @@ impl Client {
     fn handle_multi(&mut self, stream: &mut TcpStream) -> io::Result<()> {
         self.transaction = Some(Transaction::new());
         stream.write_all(b"+OK\r\n")
+    }
+    fn handle_exec(&mut self, stream: &mut TcpStream) -> io::Result<()> {
+        let Some(tx) = self.transaction.take() else {
+            return stream.write_all(b"ERR EXEC without MULTI\r\n");
+        };
+        write!(stream, "*{}\r\n", tx.queue.len())?;
+        for cmd in tx.queue {
+            self.handle_command(stream, cmd)?;
+        }
+        Ok(())
     }
 }
 
