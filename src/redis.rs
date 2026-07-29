@@ -199,6 +199,7 @@ impl Redis {
     }
     fn incr_version(&mut self, key: &str) {
         let v = self.versions.entry(key.to_string()).or_insert(0);
+        println!("========== increase version: {key}: {v}");
         *v += 1;
     }
     pub fn get_version(&self, key: &str) -> u64 {
