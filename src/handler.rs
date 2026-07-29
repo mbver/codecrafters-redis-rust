@@ -493,7 +493,7 @@ impl Client {
     }
     fn handle_multi(&mut self, stream: &mut TcpStream) -> io::Result<()> {
         self.transaction = Some(Transaction::new());
-        stream.write_all(b"+Ok\r\n")
+        stream.write_all(b"+OK\r\n")
     }
 }
 
