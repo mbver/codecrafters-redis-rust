@@ -511,7 +511,6 @@ impl Client {
     }
     fn handle_exec(&mut self, stream: &mut TcpStream) -> io::Result<()> {
         let Some(tx) = self.transaction.take() else {
-            self.watch_list.clear();
             return stream.write_all(b"-ERR EXEC without MULTI\r\n");
         };
         {
@@ -521,6 +520,7 @@ impl Client {
                 .iter()
                 .any(|(k, v)| *v != redis.get_version(k))
             {
+                self.watch_list.clear();
                 return stream.write_all(b"*-1\r\n");
             }
         }
