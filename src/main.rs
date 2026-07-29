@@ -6,9 +6,8 @@ mod parser;
 mod redis;
 
 mod handler;
-use handler::handle_client;
 
-use crate::handler::RedisShared;
+use crate::handler::{Client, RedisShared};
 
 fn main() {
     println!("Logs from your program will appear here!");
@@ -18,9 +17,9 @@ fn main() {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                let redis = redis.clone();
+                let mut client = Client::new(redis.clone());
                 std::thread::spawn(move || {
-                    handle_client(stream, redis);
+                    client.handle(stream);
                 });
             }
             Err(e) => {
