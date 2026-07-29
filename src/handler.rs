@@ -496,6 +496,7 @@ impl Client {
         let Some(tx) = self.transaction.take() else {
             return stream.write_all(b"-ERR EXEC without MULTI\r\n");
         };
+        println!("==== tx: {}", tx.queue.len());
         write!(stream, "*{}\r\n", tx.queue.len())?;
         for cmd in tx.queue {
             self.handle_command(stream, cmd)?;
