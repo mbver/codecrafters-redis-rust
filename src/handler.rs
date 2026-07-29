@@ -527,12 +527,14 @@ impl Client {
         for cmd in tx.commands {
             self.handle_command(stream, cmd)?;
         }
+        self.watch_list.clear();
         Ok(())
     }
     fn handle_discard(&mut self, stream: &mut TcpStream) -> io::Result<()> {
         let Some(_) = self.transaction.take() else {
             return stream.write_all(b"-ERR DISCARD without MULTI\r\n");
         };
+        self.watch_list.clear();
         write!(stream, "+OK\r\n")
     }
     fn handle_watch(&mut self, stream: &mut TcpStream, keys: &[String]) -> io::Result<()> {
