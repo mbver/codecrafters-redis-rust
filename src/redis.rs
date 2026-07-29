@@ -181,26 +181,31 @@ pub enum Value {
     Stream(Stream),
 }
 
-type Dirty = bool;
-
 pub struct Redis {
     store: HashMap<String, Value>,
+    versions: HashMap<String, u64>,
     expire: HashMap<String, Instant>,
     waiters: HashMap<String, Arc<Condvar>>,
-    watch_list: HashMap<String, Dirty>,
 }
 
 impl Redis {
     pub fn new() -> Self {
         Self {
             store: HashMap::new(),
+            versions: HashMap::new(),
             expire: HashMap::new(),
             waiters: HashMap::new(),
-            watch_list: HashMap::new(),
         }
     }
+    fn incr_version(&mut self, key: &str) {
+        let v = self.versions.entry(key.to_string()).or_insert(0);
+        *v += 1;
+    }
+    pub fn get_version(&self, key: &str) -> u64 {
+        self.versions.get(key).copied().unwrap_or(0)
+    }
     pub fn set(&mut self, key: String, value: String, deadline: Option<Instant>) {
-        self.mark_dirty(&key);
+        self.incr_version(&key);
         match value.parse::<u64>() {
             Ok(i) => self.store.insert(key.clone(), Value::Integer(i)),
             Err(_) => self.store.insert(key.clone(), Value::String(value)),
@@ -221,7 +226,7 @@ impl Redis {
             .get(key)
             .is_some_and(|deadline| *deadline <= Instant::now());
         if expired {
-            self.mark_dirty(key);
+            self.incr_version(key);
             self.expire.remove(key);
             self.store.remove(key);
             return None;
@@ -284,7 +289,7 @@ impl Redis {
             .get(key)
             .is_some_and(|deadline| *deadline <= Instant::now());
         if expired {
-            self.mark_dirty(key);
+            self.incr_version(key);
             self.expire.remove(key);
             self.store.remove(key);
             return None;
@@ -293,7 +298,6 @@ impl Redis {
     }
 
     pub fn rpush(&mut self, key: &str, values: &[String]) -> Result<usize, RedisError> {
-        self.mark_dirty(key);
         let list = loop {
             match self.get_mut_list(key)? {
                 Some(list) => break list,
@@ -306,11 +310,12 @@ impl Redis {
         for v in values {
             list.push_back(v.clone());
         }
-        Ok(list.len())
+        let len = list.len();
+        self.incr_version(key);
+        Ok(len)
     }
 
     pub fn lpush(&mut self, key: &str, values: &[String]) -> Result<usize, RedisError> {
-        self.mark_dirty(key);
         let list = loop {
             match self.get_mut_list(key)? {
                 Some(list) => break list,
@@ -323,7 +328,9 @@ impl Redis {
         for v in values {
             list.push_front(v.clone());
         }
-        Ok(list.len())
+        let len = list.len();
+        self.incr_version(key);
+        Ok(len)
     }
 
     pub fn lrange(&mut self, key: &str, start: isize, end: isize) -> Vec<String> {
@@ -352,11 +359,11 @@ impl Redis {
         l.len()
     }
     pub fn lpop(&mut self, key: &str, num: usize) -> Result<Option<Vec<String>>, RedisError> {
-        self.mark_dirty(key);
         match self.get_mut_value(key) {
             Some(Value::List(l)) => {
                 let num = num.min(l.len());
                 let res = l.drain(0..num).collect();
+                self.incr_version(key);
                 Ok(Some(res))
             }
             Some(_) => Err(RedisError::WrongType),
@@ -375,7 +382,6 @@ impl Redis {
         }
     }
     pub fn x_add(&mut self, key: &str, id: &str, args: &[String]) -> Result<String, RedisError> {
-        self.mark_dirty(key);
         let stream = {
             loop {
                 match self.get_mut_stream(key)? {
@@ -395,6 +401,7 @@ impl Redis {
             entry.add(k.clone(), v.clone());
         }
         stream.add(entry);
+        self.incr_version(key);
         Ok(entry_id.to_string())
     }
 
@@ -445,37 +452,18 @@ impl Redis {
     }
 
     pub fn incr(&mut self, key: &str) -> Result<u64, RedisError> {
-        self.mark_dirty(key);
         match self.get_mut_number(key)? {
             Some(num) => {
                 *num += 1;
-                Ok(num.clone())
+                let res = *num;
+                self.incr_version(key);
+                Ok(res)
             }
             None => {
                 self.set(key.to_string(), "1".to_string(), None);
                 Ok(1)
             }
         }
-    }
-
-    pub fn watch(&mut self, key: &str) {
-        self.watch_list.insert(key.to_string(), false);
-    }
-
-    pub fn mark_dirty(&mut self, key: &str) {
-        let Some(dirty) = self.watch_list.get_mut(key) else {
-            return;
-        };
-        println!("======== mark dirty: {}", key);
-        *dirty = true;
-    }
-
-    pub fn is_dirty(&self, key: &str) -> bool {
-        let Some(v) = self.watch_list.get(key) else {
-            return false;
-        };
-        println!("===== is dirty: {key}, {v}");
-        *v
     }
 }
 

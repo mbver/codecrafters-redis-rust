@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -28,14 +29,12 @@ type SharedRedis = Arc<RedisShared>;
 
 struct Transaction {
     commands: Vec<Vec<String>>,
-    keys: Vec<String>,
 }
 
 impl Transaction {
     fn new() -> Self {
         Self {
             commands: Vec::new(),
-            keys: Vec::new(),
         }
     }
 }
@@ -43,6 +42,7 @@ impl Transaction {
 pub struct Client {
     redis: SharedRedis,
     transaction: Option<Transaction>,
+    watch_list: HashMap<String, u64>,
 }
 
 impl Client {
@@ -50,6 +50,7 @@ impl Client {
         Self {
             redis,
             transaction: None,
+            watch_list: HashMap::new(),
         }
     }
     pub fn handle(&mut self, mut stream: TcpStream) {
@@ -92,10 +93,6 @@ impl Client {
             _ => {}
         }
         if let Some(tx) = self.transaction.as_mut() {
-            if let Some(key) = extract_key(&command) {
-                println!("extract key {key}");
-                tx.keys.push(key);
-            }
             tx.commands.push(command);
             return stream.write_all(b"+QUEUED\r\n");
         }
@@ -517,7 +514,11 @@ impl Client {
         };
         {
             let redis = self.redis.lock();
-            if tx.keys.iter().any(|key| redis.is_dirty(key)) {
+            if self
+                .watch_list
+                .iter()
+                .any(|(k, v)| *v != redis.get_version(k))
+            {
                 return stream.write_all(b"*-1\r\n");
             }
         }
@@ -538,8 +539,9 @@ impl Client {
             return stream.write_all(b"-ERR WATCH inside MULTI is not allowed\r\n");
         }
         {
-            let mut redis = self.redis.lock();
-            redis.watch(key);
+            let redis = self.redis.lock();
+            self.watch_list
+                .insert(key.to_string(), redis.get_version(key));
         }
         write!(stream, "+OK\r\n")
     }
@@ -562,19 +564,19 @@ fn write_x_read(stream: &mut TcpStream, values: &[(String, Vec<StreamEntry>)]) -
     Ok(())
 }
 
-fn extract_key(cmd: &[String]) -> Option<String> {
-    match cmd {
-        [cmd, key, ..]
-            if cmd.eq_ignore_ascii_case("SET")
-                || cmd.eq_ignore_ascii_case("RPUSH")
-                || cmd.eq_ignore_ascii_case("LPUSH")
-                || cmd.eq_ignore_ascii_case("LPOP")
-                || cmd.eq_ignore_ascii_case("BLPOP")
-                || cmd.eq_ignore_ascii_case("XADD")
-                || cmd.eq_ignore_ascii_case("INCR") =>
-        {
-            Some(key.clone())
-        }
-        _ => None,
-    }
-}
+// fn extract_key(cmd: &[String]) -> Option<String> {
+//     match cmd {
+//         [cmd, key, ..]
+//             if cmd.eq_ignore_ascii_case("SET")
+//                 || cmd.eq_ignore_ascii_case("RPUSH")
+//                 || cmd.eq_ignore_ascii_case("LPUSH")
+//                 || cmd.eq_ignore_ascii_case("LPOP")
+//                 || cmd.eq_ignore_ascii_case("BLPOP")
+//                 || cmd.eq_ignore_ascii_case("XADD")
+//                 || cmd.eq_ignore_ascii_case("INCR") =>
+//         {
+//             Some(key.clone())
+//         }
+//         _ => None,
+//     }
+// }
