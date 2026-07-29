@@ -511,6 +511,7 @@ impl Client {
     }
     fn handle_exec(&mut self, stream: &mut TcpStream) -> io::Result<()> {
         let Some(tx) = self.transaction.take() else {
+            self.watch_list.clear();
             return stream.write_all(b"-ERR EXEC without MULTI\r\n");
         };
         {
