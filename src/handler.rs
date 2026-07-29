@@ -81,6 +81,7 @@ impl Client {
     fn handle_command(&mut self, stream: &mut TcpStream, command: Vec<String>) -> io::Result<()> {
         match command.as_slice() {
             [cmd] if cmd.eq_ignore_ascii_case("EXEC") => return self.handle_exec(stream),
+            [cmd] if cmd.eq_ignore_ascii_case("DISCARD") => return self.handle_discard(stream),
             _ => {}
         }
         if let Some(tx) = self.transaction.as_mut() {
@@ -508,6 +509,12 @@ impl Client {
             self.handle_command(stream, cmd)?;
         }
         Ok(())
+    }
+    fn handle_discard(&mut self, stream: &mut TcpStream) -> io::Result<()> {
+        let Some(_) = self.transaction.take() else {
+            return stream.write_all(b"-ERR DISCARD without MULTI\r\n");
+        };
+        write!(stream, "+OK\r\n")
     }
 }
 
