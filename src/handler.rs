@@ -82,7 +82,9 @@ impl Client {
         match command.as_slice() {
             [cmd] if cmd.eq_ignore_ascii_case("EXEC") => return self.handle_exec(stream),
             [cmd] if cmd.eq_ignore_ascii_case("DISCARD") => return self.handle_discard(stream),
-            [cmd] if cmd.eq_ignore_ascii_case("WATCH") => return self.handle_watch(stream),
+            [cmd, key] if cmd.eq_ignore_ascii_case("WATCH") => {
+                return self.handle_watch(stream, key);
+            }
             _ => {}
         }
         if let Some(tx) = self.transaction.as_mut() {
@@ -517,7 +519,7 @@ impl Client {
         };
         write!(stream, "+OK\r\n")
     }
-    fn handle_watch(&mut self, stream: &mut TcpStream) -> io::Result<()> {
+    fn handle_watch(&mut self, stream: &mut TcpStream, key: &str) -> io::Result<()> {
         write!(stream, "+OK\r\n")
     }
 }
