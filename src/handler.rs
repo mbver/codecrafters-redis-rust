@@ -27,12 +27,16 @@ impl RedisShared {
 type SharedRedis = Arc<RedisShared>;
 
 struct Transaction {
-    queue: Vec<Vec<String>>,
+    commands: Vec<Vec<String>>,
+    keys: Vec<String>,
 }
 
 impl Transaction {
     fn new() -> Self {
-        Transaction { queue: Vec::new() }
+        Self {
+            commands: Vec::new(),
+            keys: Vec::new(),
+        }
     }
 }
 
@@ -88,7 +92,10 @@ impl Client {
             _ => {}
         }
         if let Some(tx) = self.transaction.as_mut() {
-            tx.queue.push(command);
+            if let Some(key) = extract_key(&command) {
+                tx.keys.push(key);
+            }
+            tx.commands.push(command);
             return stream.write_all(b"+QUEUED\r\n");
         }
         match command.as_slice() {
@@ -507,8 +514,14 @@ impl Client {
         let Some(tx) = self.transaction.take() else {
             return stream.write_all(b"-ERR EXEC without MULTI\r\n");
         };
-        write!(stream, "*{}\r\n", tx.queue.len())?;
-        for cmd in tx.queue {
+        {
+            let redis = self.redis.lock();
+            if tx.keys.iter().any(|key| redis.is_dirty(key)) {
+                return stream.write_all(b"*-1\r\n");
+            }
+        }
+        write!(stream, "*{}\r\n", tx.commands.len())?;
+        for cmd in tx.commands {
             self.handle_command(stream, cmd)?;
         }
         Ok(())
@@ -519,9 +532,13 @@ impl Client {
         };
         write!(stream, "+OK\r\n")
     }
-    fn handle_watch(&mut self, stream: &mut TcpStream, _: &str) -> io::Result<()> {
+    fn handle_watch(&mut self, stream: &mut TcpStream, key: &str) -> io::Result<()> {
         if self.transaction.is_some() {
             return stream.write_all(b"-ERR WATCH inside MULTI is not allowed\r\n");
+        }
+        {
+            let mut redis = self.redis.lock();
+            redis.watch(key);
         }
         write!(stream, "+OK\r\n")
     }
@@ -542,4 +559,21 @@ fn write_x_read(stream: &mut TcpStream, values: &[(String, Vec<StreamEntry>)]) -
         }
     }
     Ok(())
+}
+
+fn extract_key(cmd: &[String]) -> Option<String> {
+    match cmd {
+        [cmd, key, ..]
+            if cmd.eq_ignore_ascii_case("SET")
+                || cmd.eq_ignore_ascii_case("RPUSH")
+                || cmd.eq_ignore_ascii_case("LPUSH")
+                || cmd.eq_ignore_ascii_case("LPOP")
+                || cmd.eq_ignore_ascii_case("BLPOP")
+                || cmd.eq_ignore_ascii_case("XADD")
+                || cmd.eq_ignore_ascii_case("INCR") =>
+        {
+            Some(key.clone())
+        }
+        _ => None,
+    }
 }
