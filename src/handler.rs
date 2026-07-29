@@ -519,7 +519,10 @@ impl Client {
         };
         write!(stream, "+OK\r\n")
     }
-    fn handle_watch(&mut self, stream: &mut TcpStream, key: &str) -> io::Result<()> {
+    fn handle_watch(&mut self, stream: &mut TcpStream, _: &str) -> io::Result<()> {
+        if self.transaction.is_some() {
+            return stream.write_all(b"-ERR WATCH inside MULTI is not allowed\r\n");
+        }
         write!(stream, "+OK\r\n")
     }
 }
