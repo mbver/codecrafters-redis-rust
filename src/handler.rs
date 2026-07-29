@@ -82,6 +82,7 @@ impl Client {
         match command.as_slice() {
             [cmd] if cmd.eq_ignore_ascii_case("EXEC") => return self.handle_exec(stream),
             [cmd] if cmd.eq_ignore_ascii_case("DISCARD") => return self.handle_discard(stream),
+            [cmd] if cmd.eq_ignore_ascii_case("WATCH") => return self.handle_watch(stream),
             _ => {}
         }
         if let Some(tx) = self.transaction.as_mut() {
@@ -514,6 +515,9 @@ impl Client {
         let Some(_) = self.transaction.take() else {
             return stream.write_all(b"-ERR DISCARD without MULTI\r\n");
         };
+        write!(stream, "+OK\r\n")
+    }
+    fn handle_watch(&mut self, stream: &mut TcpStream) -> io::Result<()> {
         write!(stream, "+OK\r\n")
     }
 }
