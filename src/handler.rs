@@ -93,6 +93,7 @@ impl Client {
         }
         if let Some(tx) = self.transaction.as_mut() {
             if let Some(key) = extract_key(&command) {
+                println!("extract key {key}");
                 tx.keys.push(key);
             }
             tx.commands.push(command);
