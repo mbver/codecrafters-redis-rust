@@ -79,6 +79,10 @@ impl Client {
         }
     }
     fn handle_command(&mut self, stream: &mut TcpStream, command: Vec<String>) -> io::Result<()> {
+        if let Some(tx) = self.transaction.as_mut() {
+            tx.queue.push(command);
+            return stream.write_all(b"+QUEUED\r\n");
+        }
         match command.as_slice() {
             [cmd, arg] if cmd.eq_ignore_ascii_case("ECHO") => self.handle_echo(stream, arg),
 
@@ -496,7 +500,6 @@ impl Client {
         let Some(tx) = self.transaction.take() else {
             return stream.write_all(b"-ERR EXEC without MULTI\r\n");
         };
-        println!("==== tx: {}", tx.queue.len());
         write!(stream, "*{}\r\n", tx.queue.len())?;
         for cmd in tx.queue {
             self.handle_command(stream, cmd)?;
