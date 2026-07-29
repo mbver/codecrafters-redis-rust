@@ -87,8 +87,8 @@ impl Client {
         match command.as_slice() {
             [cmd] if cmd.eq_ignore_ascii_case("EXEC") => return self.handle_exec(stream),
             [cmd] if cmd.eq_ignore_ascii_case("DISCARD") => return self.handle_discard(stream),
-            [cmd, key] if cmd.eq_ignore_ascii_case("WATCH") => {
-                return self.handle_watch(stream, key);
+            [cmd, keys @ ..] if cmd.eq_ignore_ascii_case("WATCH") => {
+                return self.handle_watch(stream, keys);
             }
             _ => {}
         }
@@ -534,14 +534,16 @@ impl Client {
         };
         write!(stream, "+OK\r\n")
     }
-    fn handle_watch(&mut self, stream: &mut TcpStream, key: &str) -> io::Result<()> {
+    fn handle_watch(&mut self, stream: &mut TcpStream, keys: &[String]) -> io::Result<()> {
         if self.transaction.is_some() {
             return stream.write_all(b"-ERR WATCH inside MULTI is not allowed\r\n");
         }
         {
             let redis = self.redis.lock();
-            self.watch_list
-                .insert(key.to_string(), redis.get_version(key));
+            for key in keys {
+                self.watch_list
+                    .insert(key.to_string(), redis.get_version(key));
+            }
         }
         write!(stream, "+OK\r\n")
     }
