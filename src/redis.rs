@@ -463,6 +463,7 @@ impl Redis {
     }
 
     pub fn mark_dirty(&mut self, key: &str) {
+        println!("======== mark dirty: {}", key);
         let Some(dirty) = self.watch_list.get_mut(key) else {
             return;
         };
@@ -473,6 +474,7 @@ impl Redis {
         let Some(v) = self.watch_list.get(key) else {
             return false;
         };
+        println!("===== is dirty: {key}, {v}");
         *v
     }
 }
