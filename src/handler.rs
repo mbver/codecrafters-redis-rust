@@ -90,6 +90,7 @@ impl Client {
             [cmd, keys @ ..] if cmd.eq_ignore_ascii_case("WATCH") => {
                 return self.handle_watch(stream, keys);
             }
+            [cmd] if cmd.eq_ignore_ascii_case("UNWATCH") => return self.handle_unwatch(stream),
             _ => {}
         }
         if let Some(tx) = self.transaction.as_mut() {
@@ -545,6 +546,10 @@ impl Client {
                     .insert(key.to_string(), redis.get_version(key));
             }
         }
+        write!(stream, "+OK\r\n")
+    }
+    fn handle_unwatch(&mut self, stream: &mut TcpStream) -> io::Result<()> {
+        self.watch_list.clear();
         write!(stream, "+OK\r\n")
     }
 }
