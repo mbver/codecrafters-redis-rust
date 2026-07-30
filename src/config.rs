@@ -22,7 +22,7 @@ pub fn parse_args() -> Config {
                     .parse()
                     .expect("invalid port");
             }
-            "--replica_of" => {
+            "--replicaof" => {
                 let host_port = args.next().expect("missing host-port");
                 let mut parts = host_port.split_whitespace();
                 let host = parts.next().expect("missing host").to_string();
