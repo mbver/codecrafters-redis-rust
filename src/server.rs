@@ -1,12 +1,15 @@
 use std::collections::HashMap;
 use std::fmt::Display;
-use std::io;
+use std::io::{self};
+use std::str;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 use std::{
     io::{Read, Write},
     net::TcpStream,
 };
+
+use std::fmt::Write as FmtWrite;
 
 use crate::parser::Parser;
 use crate::redis::{EntryId, Redis, StreamEntry, Value};
@@ -40,7 +43,7 @@ impl Transaction {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Role {
     Master,
     Slave,
@@ -55,18 +58,65 @@ impl Display for Role {
     }
 }
 
-pub struct Handler {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReplicationId([u8; 40]);
+
+impl Display for ReplicationId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for byte in self.0 {
+            f.write_char(byte as char)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct InvalidReplId;
+
+impl ReplicationId {
+    fn new(s: &str) -> Result<Self, InvalidReplId> {
+        if s.len() != 40 || !s.chars().all(|ch| ch.is_alphanumeric()) {
+            return Err(InvalidReplId);
+        }
+        let mut bytes = [0u8; 40];
+        bytes.copy_from_slice(s.as_bytes());
+        Ok(Self(bytes))
+    }
+}
+
+struct MasterInfo {
+    master_replid: ReplicationId,
+    offset: u64,
+}
+
+impl MasterInfo {
+    fn new() -> Self {
+        Self {
+            master_replid: ReplicationId::new("8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb").unwrap(),
+            offset: 0,
+        }
+    }
+}
+
+pub struct Server {
     role: Role,
+    master_info: Option<MasterInfo>,
     redis: SharedRedis,
     transaction: Option<Transaction>,
     watch_list: HashMap<String, u64>,
 }
 
-impl Handler {
+impl Server {
     pub fn new(role: Role, redis: SharedRedis) -> Self {
+        let master_info = if role == Role::Master {
+            Some(MasterInfo::new())
+        } else {
+            None
+        };
         Self {
             role,
-            redis,
+            master_info,
+            redis: redis,
             transaction: None,
             watch_list: HashMap::new(),
         }
@@ -577,8 +627,15 @@ impl Handler {
     fn handle_info(&mut self, stream: &mut TcpStream, subcmd: &str) -> io::Result<()> {
         match subcmd {
             "replication" => {
-                let role = format!("role:{}", self.role);
-                write!(stream, "${}\r\n{}\r\n", role.len(), role)?;
+                let info = if let Some(master_info) = self.master_info.as_ref() {
+                    format!(
+                        "role:{}\r\nmaster_replid:{}\r\nmaster_repl_offset:{}\r\n",
+                        self.role, master_info.master_replid, master_info.offset,
+                    )
+                } else {
+                    format!("role:{}\r\n", self.role)
+                };
+                write!(stream, "${}\r\n{}\r\n", info.len(), info)?;
             }
             _ => {}
         }

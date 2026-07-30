@@ -5,12 +5,12 @@ mod parser;
 
 mod redis;
 
-mod handler;
+mod server;
 
 mod config;
 
 use crate::config::parse_args;
-use crate::handler::{Handler, RedisShared, Role};
+use crate::server::{RedisShared, Role, Server};
 
 fn main() {
     println!("Logs from your program will appear here!");
@@ -27,7 +27,7 @@ fn main() {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                let mut client = Handler::new(role.clone(), redis.clone());
+                let mut client = Server::new(role.clone(), redis.clone());
                 std::thread::spawn(move || {
                     client.handle(stream);
                 });
