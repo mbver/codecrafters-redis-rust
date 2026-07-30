@@ -10,10 +10,8 @@ pub fn parse_args() -> Config {
         port: 6379,
         replica_of: None,
     };
-    println!("========= start parsing");
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
-        println!("====== arg is {arg}");
         match arg.as_str() {
             "--port" => {
                 config.port = args
