@@ -1,5 +1,5 @@
+use std::net::TcpListener;
 use std::sync::Arc;
-use std::{env, net::TcpListener};
 
 mod parser;
 
@@ -7,29 +7,23 @@ mod redis;
 
 mod handler;
 
+mod config;
+
+use crate::config::parse_args;
 use crate::handler::{Handler, RedisShared, Role};
 
 fn main() {
     println!("Logs from your program will appear here!");
-    let args: Vec<String> = env::args().collect();
-    let port = match args.as_slice() {
-        [_, flag, port] if flag.eq("--port") => match port.parse::<u16>() {
-            Ok(port) => port,
-            Err(e) => {
-                eprintln!("invalid port: {e}");
-                std::process::exit(1);
-            }
-        },
-        _ => 6379,
-    };
-    let role = if port == 6379 {
-        Role::Master
-    } else {
-        Role::Replicator
-    };
+
+    let config = parse_args();
 
     let redis = Arc::new(RedisShared::new());
-    let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
+    let listener = TcpListener::bind(format!("127.0.0.1:{}", config.port)).unwrap();
+
+    let role = match config.replica_of {
+        Some(_) => Role::Slave,
+        None => Role::Master,
+    };
 
     for stream in listener.incoming() {
         match stream {
