@@ -19,7 +19,7 @@ fn main() {
 
     let redis = Arc::new(RedisShared::new());
     let listener = TcpListener::bind(format!("127.0.0.1:{}", config.port)).unwrap();
-
+    println!("======= listening on port: {}", config.port);
     let role = match config.replica_of {
         Some(_) => Role::Slave,
         None => Role::Master,
