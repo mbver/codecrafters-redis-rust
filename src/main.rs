@@ -1,17 +1,16 @@
-use std::net::TcpListener;
+use std::io::{self, Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
 
 mod parser;
 
 mod redis;
 
-mod server;
+mod handler;
 
 mod config;
-
 use crate::config::parse_args;
-use crate::server::{RedisShared, Role, Server};
-
+use crate::handler::{Handler, RedisShared, Role};
 fn main() {
     println!("Logs from your program will appear here!");
 
@@ -20,14 +19,27 @@ fn main() {
     let redis = Arc::new(RedisShared::new());
     let listener = TcpListener::bind(format!("127.0.0.1:{}", config.port)).unwrap();
     let role = match config.replica_of {
-        Some(_) => Role::Slave,
+        Some(_) => {
+            let Some((host, port)) = &config.replica_of else {
+                eprintln!("missing host port");
+                std::process::exit(1);
+            };
+            match ping(host, *port) {
+                Ok(Some(_)) => {}
+                _ => {
+                    eprintln!("ping failed");
+                    std::process::exit(1);
+                }
+            };
+            Role::Slave
+        }
         None => Role::Master,
     };
 
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                let mut client = Server::new(role.clone(), redis.clone());
+                let mut client = Handler::new(role.clone(), redis.clone());
                 std::thread::spawn(move || {
                     client.handle(stream);
                 });
@@ -37,4 +49,15 @@ fn main() {
             }
         }
     }
+}
+
+fn ping(host: &str, port: u16) -> io::Result<Option<TcpStream>> {
+    let mut stream = TcpStream::connect((host, port))?;
+    stream.write_all(b"*1\r\n$4\r\nPING\r\n")?;
+    let mut buf = [0; 512];
+    let n = stream.read(&mut buf)?;
+    if &buf[..n] != b"+PONG\r\n" {
+        return Ok(None);
+    }
+    Ok(Some(stream))
 }

@@ -98,7 +98,7 @@ impl MasterInfo {
     }
 }
 
-pub struct Server {
+pub struct Handler {
     role: Role,
     master_info: Option<MasterInfo>,
     redis: SharedRedis,
@@ -106,7 +106,7 @@ pub struct Server {
     watch_list: HashMap<String, u64>,
 }
 
-impl Server {
+impl Handler {
     pub fn new(role: Role, redis: SharedRedis) -> Self {
         let master_info = if role == Role::Master {
             Some(MasterInfo::new())
