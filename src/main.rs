@@ -24,13 +24,14 @@ fn main() {
                 eprintln!("missing host port");
                 std::process::exit(1);
             };
-            match ping(host, *port) {
-                Ok(Some(_)) => {}
-                _ => {
-                    eprintln!("ping failed");
-                    std::process::exit(1);
-                }
+            let Ok(Some(mut stream)) = ping(host, *port) else {
+                eprintln!("ping failed");
+                std::process::exit(1);
             };
+            if send_replconf(&mut stream, *port).is_err() {
+                eprintln!("replconf failed");
+                std::process::exit(1);
+            }
             Role::Slave
         }
         None => Role::Master,
@@ -60,4 +61,31 @@ fn ping(host: &str, port: u16) -> io::Result<Option<TcpStream>> {
         return Ok(None);
     }
     Ok(Some(stream))
+}
+
+fn send_replconf(stream: &mut TcpStream, port: u16) -> io::Result<()> {
+    let port = port.to_string();
+    write!(
+        stream,
+        "*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n${}\r\n{}\r\n",
+        port.len(),
+        port
+    )?;
+    let mut buf = [0; 512];
+    let n = stream.read(&mut buf)?;
+    if &buf[..n] != b"+OK\r\n" {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid replconf result",
+        ));
+    }
+    write!(stream, "*3\r\n$8\r\nREPLCONF\r\ncapa\r\n$6\r\npsync2\r\n")?;
+    let n = stream.read(&mut buf)?;
+    if &buf[..n] != b"+OK\r\n" {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid replconf result",
+        ));
+    }
+    Ok(())
 }

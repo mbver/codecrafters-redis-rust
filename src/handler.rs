@@ -212,6 +212,7 @@ impl Handler {
             [cmd, key] if cmd.eq_ignore_ascii_case("INCR") => self.handle_incr(stream, key),
             [cmd] if cmd.eq_ignore_ascii_case("MULTI") => self.handle_multi(stream),
             [cmd, subcmd] if cmd.eq_ignore_ascii_case("INFO") => self.handle_info(stream, subcmd),
+            [cmd, ..] if cmd.eq_ignore_ascii_case("REPLCONF") => self.handle_replconf(stream),
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
             }
@@ -640,6 +641,9 @@ impl Handler {
             _ => {}
         }
         Ok(())
+    }
+    fn handle_replconf(&mut self, stream: &mut TcpStream) -> io::Result<()> {
+        stream.write_all(b"+OK\r\n")
     }
 }
 
