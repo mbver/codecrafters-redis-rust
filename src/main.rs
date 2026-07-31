@@ -82,7 +82,11 @@ fn send_replconf(stream: &mut TcpStream, port: u16) -> io::Result<()> {
             "invalid replconf result",
         ));
     }
-    write!(stream, "*3\r\n$8\r\nREPLCONF\r\ncapa\r\n$6\r\npsync2\r\n")?;
+
+    write!(
+        stream,
+        "*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n"
+    )?;
     println!("====== stream sent 2 ok");
 
     let n = stream.read(&mut buf)?;
