@@ -65,18 +65,15 @@ fn ping(host: &str, port: u16) -> io::Result<Option<TcpStream>> {
 
 fn send_replconf(stream: &mut TcpStream, port: u16) -> io::Result<()> {
     let port = port.to_string();
-    println!("====== port is: {port}");
     write!(
         stream,
         "*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n${}\r\n{}\r\n",
         port.len(),
         port
     )?;
-    println!("====== stream sent 1 ok");
     let mut buf = [0; 512];
     let n = stream.read(&mut buf)?;
     if &buf[..n] != b"+OK\r\n" {
-        println!("====== resp1 is incorrect");
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "invalid replconf result",
@@ -87,7 +84,6 @@ fn send_replconf(stream: &mut TcpStream, port: u16) -> io::Result<()> {
         stream,
         "*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n"
     )?;
-    println!("====== stream sent 2 ok");
 
     let n = stream.read(&mut buf)?;
     if &buf[..n] != b"+OK\r\n" {
