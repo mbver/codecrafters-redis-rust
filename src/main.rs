@@ -28,7 +28,7 @@ fn main() {
                 eprintln!("ping failed");
                 std::process::exit(1);
             };
-            if send_replconf(&mut stream, *port).is_err() {
+            if send_replconf(&mut stream, config.port).is_err() {
                 eprintln!("replconf failed");
                 std::process::exit(1);
             }
