@@ -76,7 +76,7 @@ fn send_replconf(stream: &mut TcpStream, port: u16) -> io::Result<()> {
         port
     )?;
     let mut buf = [0; 512];
-    let n = stream.read(&mut buf)?;
+    let n = stream.read(&mut buf)?; // TODO: change to read_exact
     if &buf[..n] != b"+OK\r\n" {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
