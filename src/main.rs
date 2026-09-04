@@ -102,12 +102,12 @@ fn send_replconf(stream: &mut TcpStream, port: u16) -> io::Result<()> {
 fn send_psync(stream: &mut TcpStream, _: Option<String>, _: i64) -> io::Result<()> {
     write!(stream, "*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n")?;
     let mut buf = [0; 512];
-    let n = stream.read(&mut buf)?;
-    if &buf[..n] != b"+FULLRESYNC <REPL_ID> 0\r\n" {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "invalid replconf result",
-        ));
-    }
+    let _ = stream.read(&mut buf)?;
+    // if &buf[..n] != b"+FULLRESYNC <REPL_ID> 0\r\n" {
+    //     return Err(io::Error::new(
+    //         io::ErrorKind::InvalidData,
+    //         "invalid replconf result",
+    //     ));
+    // }
     Ok(())
 }
