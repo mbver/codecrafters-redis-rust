@@ -647,7 +647,11 @@ impl Handler {
         stream.write_all(b"+OK\r\n")
     }
     fn handle_psync(&mut self, stream: &mut TcpStream) -> io::Result<()> {
-        stream.write_all(b"+FULLRESYNC <REPL_ID> 0\r\n")
+        let Some(master_info) = self.master_info.as_ref() else {
+            return Err(io::Error::other("PSYNC called from non-master"));
+        };
+
+        write!(stream, "+FULLRESYNC {} 0\r\n", master_info.master_replid)
     }
 }
 
