@@ -213,6 +213,7 @@ impl Handler {
             [cmd] if cmd.eq_ignore_ascii_case("MULTI") => self.handle_multi(stream),
             [cmd, subcmd] if cmd.eq_ignore_ascii_case("INFO") => self.handle_info(stream, subcmd),
             [cmd, ..] if cmd.eq_ignore_ascii_case("REPLCONF") => self.handle_replconf(stream),
+            [cmd, ..] if cmd.eq_ignore_ascii_case("PSYNC") => self.handle_psync(stream),
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
             }
@@ -644,6 +645,9 @@ impl Handler {
     }
     fn handle_replconf(&mut self, stream: &mut TcpStream) -> io::Result<()> {
         stream.write_all(b"+OK\r\n")
+    }
+    fn handle_psync(&mut self, stream: &mut TcpStream) -> io::Result<()> {
+        stream.write_all(b"+FULLRESYNC <REPL_ID> 0\r\n")
     }
 }
 

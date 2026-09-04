@@ -32,6 +32,10 @@ fn main() {
                 eprintln!("replconf failed");
                 std::process::exit(1);
             }
+            if send_psync(&mut stream, None, -1).is_err() {
+                eprintln!("psync failed");
+                std::process::exit(1);
+            }
             Role::Slave
         }
         None => Role::Master,
@@ -87,6 +91,19 @@ fn send_replconf(stream: &mut TcpStream, port: u16) -> io::Result<()> {
 
     let n = stream.read(&mut buf)?;
     if &buf[..n] != b"+OK\r\n" {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid replconf result",
+        ));
+    }
+    Ok(())
+}
+
+fn send_psync(stream: &mut TcpStream, _: Option<String>, _: i64) -> io::Result<()> {
+    write!(stream, "*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n")?;
+    let mut buf = [0; 512];
+    let n = stream.read(&mut buf)?;
+    if &buf[..n] != b"+FULLRESYNC <REPL_ID> 0\r\n" {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "invalid replconf result",
