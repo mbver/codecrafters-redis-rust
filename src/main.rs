@@ -10,7 +10,7 @@ mod handler;
 
 mod config;
 use crate::config::parse_args;
-use crate::handler::{Handler, RedisShared, Role};
+use crate::handler::{Handler, MasterState, RedisShared, Role};
 fn main() {
     println!("Logs from your program will appear here!");
 
@@ -36,9 +36,15 @@ fn main() {
                 eprintln!("psync failed");
                 std::process::exit(1);
             }
+            // Do we really need Slave role?
+            // it is repetitive here
+            let mut client = Handler::new(Role::Slave, redis.clone());
+            std::thread::spawn(move || {
+                client.handle_replication(stream);
+            });
             Role::Slave
         }
-        None => Role::Master,
+        None => Role::Master(Arc::new(MasterState::new())),
     };
 
     for stream in listener.incoming() {

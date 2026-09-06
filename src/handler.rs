@@ -12,7 +12,7 @@ use std::{
 use std::fmt::Write as FmtWrite;
 
 use crate::parser::Parser;
-use crate::redis::{EntryId, Redis, StreamEntry, Value};
+use crate::redis::{EntryId, Redis, RedisError, StreamEntry, Value};
 
 pub struct RedisShared {
     redis: Mutex<Redis>,
@@ -43,16 +43,30 @@ impl Transaction {
     }
 }
 
-#[derive(Clone, PartialEq, Eq)]
+pub struct MasterState {
+    info: MasterInfo,
+    replicas: Mutex<Vec<TcpStream>>,
+}
+
+impl MasterState {
+    pub fn new() -> Self {
+        Self {
+            info: MasterInfo::new(),
+            replicas: Mutex::new(Vec::new()),
+        }
+    }
+}
+
+#[derive(Clone)]
 pub enum Role {
-    Master,
+    Master(Arc<MasterState>),
     Slave,
 }
 
 impl Display for Role {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Role::Master => write!(f, "master"),
+            Role::Master(_) => write!(f, "master"),
             Role::Slave => write!(f, "slave"),
         }
     }
@@ -100,22 +114,34 @@ impl MasterInfo {
 
 pub struct Handler {
     role: Role,
-    master_info: Option<MasterInfo>,
     redis: SharedRedis,
     transaction: Option<Transaction>,
     watch_list: HashMap<String, u64>,
 }
 
+fn is_write_command(command: &[String]) -> bool {
+    let Some(cmd) = command.first() else {
+        return false;
+    };
+    cmd.eq_ignore_ascii_case("SET")
+        || cmd.eq_ignore_ascii_case("INCR")
+        || cmd.eq_ignore_ascii_case("LPUSH")
+        || cmd.eq_ignore_ascii_case("RPUSH")
+}
+
+fn encode_command(command: &[String]) -> Vec<u8> {
+    let mut out = Vec::new();
+    write!(&mut out, "*{}\r\n", command.len()).unwrap();
+    for arg in command {
+        write!(&mut out, "${}\r\n{}\r\n", arg.len(), arg).unwrap();
+    }
+    out
+}
+
 impl Handler {
     pub fn new(role: Role, redis: SharedRedis) -> Self {
-        let master_info = if role == Role::Master {
-            Some(MasterInfo::new())
-        } else {
-            None
-        };
         Self {
             role,
-            master_info,
             redis: redis,
             transaction: None,
             watch_list: HashMap::new(),
@@ -134,9 +160,29 @@ impl Handler {
                     .iter()
                     .map(|b| String::from_utf8_lossy(b).to_string())
                     .collect();
+                if let Some(cmd) = command.first()
+                    && cmd.eq_ignore_ascii_case("PSYNC")
+                {
+                    if let Err(e) = self.handle_psync(stream) {
+                        eprintln!("psync io error: {:?}", e);
+                    }
+                    return;
+                }
+                let is_write = is_write_command(&command);
+                let encoded = encode_command(&command);
                 if let Err(e) = self.handle_command(&mut stream, command) {
                     eprintln!("io error: {:?}", e);
                     return;
+                }
+                if is_write {
+                    if let Role::Master(master) = &mut self.role {
+                        let mut replicas = master.replicas.lock().unwrap();
+                        for stream in replicas.iter_mut() {
+                            if let Err(e) = stream.write_all(&encoded) {
+                                eprintln!("io error: {:?}", e);
+                            }
+                        }
+                    }
                 }
             }
 
@@ -151,6 +197,61 @@ impl Handler {
             parser.feed(&tmp[..n]);
         }
     }
+
+    pub fn handle_replication(&mut self, mut stream: TcpStream) {
+        let mut parser = Parser::new();
+        let mut tmp = [0u8; 512];
+
+        // TODO: loop logic is repetitive.
+        // Find some way to merge them.
+        loop {
+            while let Some(command) = parser.try_parse().unwrap_or_else(|e| {
+                eprintln!("protocol error: {e}");
+                std::process::exit(1); // or handle more gracefully
+            }) {
+                let command: Vec<String> = command
+                    .iter()
+                    .map(|b| String::from_utf8_lossy(b).to_string())
+                    .collect();
+
+                self.handle_repl_command(command);
+            }
+
+            let n = match stream.read(&mut tmp) {
+                Ok(0) => return,
+                Ok(n) => n,
+                Err(e) => {
+                    eprintln!("read error: {e}");
+                    return;
+                }
+            };
+            parser.feed(&tmp[..n]);
+        }
+    }
+
+    fn handle_repl_command(&mut self, command: Vec<String>) {
+        match command.as_slice() {
+            [cmd, key, value, args @ ..] if cmd.eq_ignore_ascii_case("SET") => {
+                let _ = self.handle_set_internal(key, value, args);
+            }
+            [cmd, key, values @ ..] if cmd.eq_ignore_ascii_case("RPUSH") => {
+                let _ = self.handle_rpush_internal(key, values);
+            }
+            [cmd, key, values @ ..] if cmd.eq_ignore_ascii_case("LPUSH") => {
+                let _ = self.handle_lpush_internal(key, values);
+            }
+            [cmd, key, arg @ ..] if cmd.eq_ignore_ascii_case("LPOP") => {
+                let _ = self.handle_lpop_internal(key, arg);
+            }
+            [cmd, key] if cmd.eq_ignore_ascii_case("INCR") => {
+                let _ = self.handle_incr_internal(key);
+            }
+            _ => {
+                unreachable!()
+            }
+        }
+    }
+
     fn handle_command(&mut self, stream: &mut TcpStream, command: Vec<String>) -> io::Result<()> {
         match command.as_slice() {
             [cmd] if cmd.eq_ignore_ascii_case("EXEC") => return self.handle_exec(stream),
@@ -213,7 +314,6 @@ impl Handler {
             [cmd] if cmd.eq_ignore_ascii_case("MULTI") => self.handle_multi(stream),
             [cmd, subcmd] if cmd.eq_ignore_ascii_case("INFO") => self.handle_info(stream, subcmd),
             [cmd, ..] if cmd.eq_ignore_ascii_case("REPLCONF") => self.handle_replconf(stream),
-            [cmd, ..] if cmd.eq_ignore_ascii_case("PSYNC") => self.handle_psync(stream),
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
             }
@@ -224,13 +324,7 @@ impl Handler {
         stream.write_all(resp.as_bytes())
     }
 
-    fn handle_set(
-        &mut self,
-        stream: &mut TcpStream,
-        key: &String,
-        value: &String,
-        args: &[String],
-    ) -> io::Result<()> {
+    fn handle_set_internal(&mut self, key: &String, value: &String, args: &[String]) {
         let deadline = match args {
             [] => None,
             [cmd, seconds] if cmd.eq_ignore_ascii_case("EX") => {
@@ -241,13 +335,23 @@ impl Handler {
             }
             _ => {
                 eprintln!("invalid argument: {:?}", args);
-                return Ok(());
+                return;
             }
         };
         {
             let mut redis = self.redis.lock();
             redis.set(key.to_string(), value.to_string(), deadline);
         }
+    }
+
+    fn handle_set(
+        &mut self,
+        stream: &mut TcpStream,
+        key: &String,
+        value: &String,
+        args: &[String],
+    ) -> io::Result<()> {
+        self.handle_set_internal(key, value, args);
         stream.write_all(b"+OK\r\n")
     }
 
@@ -267,24 +371,38 @@ impl Handler {
         }
     }
 
+    fn handle_rpush_internal(&mut self, key: &String, values: &[String]) -> String {
+        let mut redis = self.redis.lock();
+        let res = redis.rpush(key, values);
+        match res {
+            Ok(size) => {
+                redis.notify_one(key);
+                format!(":{}\r\n", size)
+            }
+            Err(e) => format!("{e}"),
+        }
+    }
+
     fn handle_rpush(
         &mut self,
         stream: &mut TcpStream,
         key: &String,
         values: &[String],
     ) -> io::Result<()> {
-        let output = {
-            let mut redis = self.redis.lock();
-            let res = redis.rpush(key, values);
-            match res {
-                Ok(size) => {
-                    redis.notify_one(key);
-                    format!(":{}\r\n", size)
-                }
-                Err(e) => format!("{e}"),
-            }
-        };
+        let output = self.handle_rpush_internal(key, values);
         stream.write_all(output.as_bytes())
+    }
+
+    fn handle_lpush_internal(&mut self, key: &String, values: &[String]) -> String {
+        let mut redis = self.redis.lock();
+        let res = redis.lpush(key, values);
+        match res {
+            Ok(size) => {
+                redis.notify_one(key);
+                format!(":{}\r\n", size)
+            }
+            Err(e) => format!("{e}"),
+        }
     }
 
     fn handle_lpush(
@@ -293,17 +411,7 @@ impl Handler {
         key: &String,
         values: &[String],
     ) -> io::Result<()> {
-        let output = {
-            let mut redis = self.redis.lock();
-            let res = redis.lpush(key, values);
-            match res {
-                Ok(size) => {
-                    redis.notify_one(key);
-                    format!(":{}\r\n", size)
-                }
-                Err(e) => format!("{e}"),
-            }
-        };
+        let output = self.handle_lpush_internal(key, values);
         stream.write_all(output.as_bytes())
     }
 
@@ -341,35 +449,39 @@ impl Handler {
         write!(stream, ":{}\r\n", size)
     }
 
+    fn handle_lpop_internal(
+        &mut self,
+        key: &String,
+        arg: &[String],
+    ) -> Result<Option<Vec<String>>, RedisError> {
+        if arg.len() > 1 {
+            eprintln!("wrong argument: {:?}", arg);
+            return Err(RedisError::WrongArgument);
+        }
+        let num = match arg.first() {
+            None => 1,
+            Some(v) => match v.parse::<usize>() {
+                Ok(n) => n,
+                Err(_) => {
+                    eprintln!("wrong argument {v}");
+                    return Err(RedisError::WrongArgument);
+                }
+            },
+        };
+
+        let mut redis = self.redis.lock();
+        redis.lpop(key, num)
+    }
+
     fn handle_lpop(
         &mut self,
         stream: &mut TcpStream,
         key: &String,
         arg: &[String],
     ) -> io::Result<()> {
-        if arg.len() > 1 {
-            eprintln!("wrong argument: {:?}", arg);
-            return Ok(());
-        }
-        let mut is_array = false;
-        let num = match arg.first() {
-            None => 1,
-            Some(v) => match v.parse::<usize>() {
-                Ok(n) => {
-                    is_array = true;
-                    n
-                }
-                Err(_) => {
-                    eprintln!("wrong argument {v}");
-                    return Ok(());
-                }
-            },
-        };
+        let res = self.handle_lpop_internal(key, arg);
+        let is_array = arg.first().is_some();
 
-        let res = {
-            let mut redis = self.redis.lock();
-            redis.lpop(key, num)
-        };
         match res {
             Ok(None) => stream.write_all(b"$-1\r\n"),
             Ok(Some(values)) => {
@@ -389,6 +501,7 @@ impl Handler {
     }
 
     // TODO: consolidate the L/R semantics
+    // NOT SURE HOW TO DO THIS IN REPLICATION MODE
     fn handle_blpop(
         &mut self,
         stream: &mut TcpStream,
@@ -453,6 +566,17 @@ impl Handler {
         write!(stream, "+{t}\r\n")
     }
 
+    fn handle_xadd_internal(&mut self, key: &str, id: &str, args: &[String]) -> String {
+        let mut redis = self.redis.lock();
+        match redis.x_add(key, id, args) {
+            Ok(id) => {
+                redis.notify_one(key);
+                format!("${}\r\n{}\r\n", id.len(), id)
+            }
+            Err(e) => format!("-ERR {e}\r\n"),
+        }
+    }
+
     fn handle_xadd(
         &mut self,
         stream: &mut TcpStream,
@@ -463,16 +587,7 @@ impl Handler {
         if !is_at_least_two_and_even(args.len()) {
             return write!(stream, "-ERR: wrong number of arguments: {}", args.len());
         }
-        let output = {
-            let mut redis = self.redis.lock();
-            match redis.x_add(key, id, args) {
-                Ok(id) => {
-                    redis.notify_one(key);
-                    format!("${}\r\n{}\r\n", id.len(), id)
-                }
-                Err(e) => format!("-ERR {e}\r\n"),
-            }
-        };
+        let output = self.handle_xadd_internal(key, id, args);
         stream.write_all(output.as_bytes())
     }
 
@@ -562,11 +677,14 @@ impl Handler {
             }
         }
     }
+
+    fn handle_incr_internal(&mut self, key: &str) -> Result<u64, RedisError> {
+        let mut redis = self.redis.lock();
+        redis.incr(key)
+    }
+
     fn handle_incr(&mut self, stream: &mut TcpStream, key: &str) -> io::Result<()> {
-        let res = {
-            let mut redis = self.redis.lock();
-            redis.incr(key)
-        };
+        let res = self.handle_incr_internal(key);
         match res {
             Ok(num) => {
                 write!(stream, ":{}\r\n", num)
@@ -629,7 +747,8 @@ impl Handler {
     fn handle_info(&mut self, stream: &mut TcpStream, subcmd: &str) -> io::Result<()> {
         match subcmd {
             "replication" => {
-                let info = if let Some(master_info) = self.master_info.as_ref() {
+                let info = if let Role::Master(master) = &self.role {
+                    let master_info = &master.info;
                     format!(
                         "role:{}\r\nmaster_replid:{}\r\nmaster_repl_offset:{}\r\n",
                         self.role, master_info.master_replid, master_info.offset,
@@ -646,15 +765,20 @@ impl Handler {
     fn handle_replconf(&mut self, stream: &mut TcpStream) -> io::Result<()> {
         stream.write_all(b"+OK\r\n")
     }
-    fn handle_psync(&mut self, stream: &mut TcpStream) -> io::Result<()> {
-        let Some(master_info) = self.master_info.as_ref() else {
+    fn handle_psync(&mut self, mut stream: TcpStream) -> io::Result<()> {
+        let Role::Master(master) = &mut self.role else {
             return Err(io::Error::other("PSYNC called from non-master"));
         };
+
+        let master_info = &master.info;
         let hex_content = "524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2";
         let rdb_data = hex::decode(hex_content).unwrap();
         write!(stream, "+FULLRESYNC {} 0\r\n", master_info.master_replid)?;
         write!(stream, "${}\r\n", rdb_data.len())?;
-        stream.write_all(&rdb_data)
+        stream.write_all(&rdb_data)?;
+        let mut replicas = master.replicas.lock().unwrap();
+        replicas.push(stream);
+        Ok(())
     }
 }
 

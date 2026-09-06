@@ -10,6 +10,7 @@ use std::{
 
 #[derive(Debug)]
 pub enum RedisError {
+    WrongArgument,
     WrongType,
     StreamIdParseError,
     InvalidStreamId(String),
@@ -18,6 +19,7 @@ pub enum RedisError {
 impl Display for RedisError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            RedisError::WrongArgument => write!(f, "wrong argument"),
             RedisError::WrongType => write!(f, "wrong type"),
             RedisError::StreamIdParseError => write!(f, "stream id parse error"),
             RedisError::InvalidStreamId(e) => write!(f, "{e}"),
