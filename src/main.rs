@@ -1,5 +1,6 @@
 use std::io::{self, Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::process;
 use std::sync::Arc;
 
 mod parser;
@@ -18,30 +19,9 @@ fn main() {
 
     let redis = Arc::new(RedisShared::new());
     let listener = TcpListener::bind(format!("127.0.0.1:{}", config.port)).unwrap();
-    let role = match config.replica_of {
-        Some(_) => {
-            let Some((host, port)) = &config.replica_of else {
-                eprintln!("missing host port");
-                std::process::exit(1);
-            };
-            let Ok(Some(mut stream)) = ping(host, *port) else {
-                eprintln!("ping failed");
-                std::process::exit(1);
-            };
-            if send_replconf(&mut stream, config.port).is_err() {
-                eprintln!("replconf failed");
-                std::process::exit(1);
-            }
-            if send_psync(&mut stream, None, -1).is_err() {
-                eprintln!("psync failed");
-                std::process::exit(1);
-            }
-            // Do we really need Slave role?
-            // it is repetitive here
-            let mut client = Handler::new(Role::Slave, redis.clone());
-            std::thread::spawn(move || {
-                client.handle_replication(stream);
-            });
+    let role = match &config.replica_of {
+        Some((host, port)) => {
+            start_replica(host, *port, config.port, redis.clone());
             Role::Slave
         }
         None => Role::Master(Arc::new(MasterState::new())),
@@ -60,6 +40,27 @@ fn main() {
             }
         }
     }
+}
+
+fn fatal(msg: &str) -> ! {
+    eprintln!("{msg}");
+    process::exit(1)
+}
+
+fn start_replica(host: &str, port: u16, my_port: u16, redis: Arc<RedisShared>) {
+    let Ok(Some(mut stream)) = ping(host, port) else {
+        fatal("ping failed");
+    };
+    if send_replconf(&mut stream, my_port).is_err() {
+        fatal("replconf failed");
+    }
+    if send_psync(&mut stream, None, -1).is_err() {
+        fatal("psync failed");
+    }
+    let mut client = Handler::new(Role::Slave, redis);
+    std::thread::spawn(move || {
+        client.handle_replication(stream);
+    });
 }
 
 fn ping(host: &str, port: u16) -> io::Result<Option<TcpStream>> {
