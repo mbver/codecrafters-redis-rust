@@ -244,7 +244,7 @@ impl Handler {
             match command.as_slice() {
                 [cmd, subcmd, arg]
                     if cmd.eq_ignore_ascii_case("replconf")
-                        && subcmd.eq_ignore_ascii_case("ack")
+                        && subcmd.eq_ignore_ascii_case("getack")
                         && arg == "*" =>
                 {
                     println!("=============== getack invoked in repl");
@@ -348,7 +348,7 @@ impl Handler {
             [cmd, subcmd] if cmd.eq_ignore_ascii_case("INFO") => self.handle_info(stream, subcmd),
             [cmd, subcmd, arg]
                 if cmd.eq_ignore_ascii_case("REPLCONF")
-                    && subcmd.eq_ignore_ascii_case("ack")
+                    && subcmd.eq_ignore_ascii_case("GETACK")
                     && arg == "*" =>
             {
                 println!("============== getack invoked in handler");
