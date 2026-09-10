@@ -344,6 +344,13 @@ impl Handler {
             [cmd, key] if cmd.eq_ignore_ascii_case("INCR") => self.handle_incr(stream, key),
             [cmd] if cmd.eq_ignore_ascii_case("MULTI") => self.handle_multi(stream),
             [cmd, subcmd] if cmd.eq_ignore_ascii_case("INFO") => self.handle_info(stream, subcmd),
+            [cmd, subcmd, arg]
+                if cmd.eq_ignore_ascii_case("REPLCONF")
+                    && subcmd.eq_ignore_ascii_case("ack")
+                    && arg == "*" =>
+            {
+                stream.write_all(b"*3\r\n$8\r\nreplconf\r\n$3\r\nACK\r\n$1\r\n*\r\n")
+            }
             [cmd, ..] if cmd.eq_ignore_ascii_case("REPLCONF") => self.handle_replconf(stream),
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
