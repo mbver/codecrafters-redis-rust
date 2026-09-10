@@ -252,6 +252,7 @@ impl Handler {
                     {
                         eprintln!("io error: {e}");
                     }
+
                     return Next::Continue(stream);
                 }
                 _ => {}
