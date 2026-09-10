@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::io::{self};
 use std::str;
+use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 use std::{
@@ -43,16 +44,40 @@ impl Transaction {
     }
 }
 
+enum ReplicationMessage {
+    AddReplica(TcpStream),
+    Command(Vec<u8>),
+}
+
 pub struct MasterState {
     info: MasterInfo,
-    replicas: Mutex<Vec<TcpStream>>,
+    replication_tx: Sender<ReplicationMessage>,
 }
 
 impl MasterState {
     pub fn new() -> Self {
+        let (tx, rx) = channel();
+        std::thread::spawn(move || {
+            replication_loop(rx);
+        });
         Self {
             info: MasterInfo::new(),
-            replicas: Mutex::new(Vec::new()),
+            replication_tx: tx,
+        }
+    }
+}
+
+fn replication_loop(rx: Receiver<ReplicationMessage>) {
+    let mut replicas = Vec::<TcpStream>::new();
+
+    while let Ok(msg) = rx.recv() {
+        match msg {
+            ReplicationMessage::AddReplica(stream) => {
+                replicas.push(stream);
+            }
+            ReplicationMessage::Command(data) => {
+                replicas.retain_mut(|stream| stream.write_all(&data).is_ok());
+            }
         }
     }
 }
@@ -203,12 +228,8 @@ impl Handler {
             }
             if is_write {
                 if let Role::Master(master) = &mut self.role {
-                    let mut replicas = master.replicas.lock().unwrap();
-                    for stream in replicas.iter_mut() {
-                        if let Err(e) = stream.write_all(&encoded) {
-                            eprintln!("io error: {:?}", e);
-                        }
-                    }
+                    let tx = master.replication_tx.clone();
+                    let _ = tx.send(ReplicationMessage::Command(encoded));
                 }
             }
             Next::Continue(stream)
@@ -769,8 +790,10 @@ impl Handler {
         write!(stream, "+FULLRESYNC {} 0\r\n", master_info.master_replid)?;
         write!(stream, "${}\r\n", rdb_data.len())?;
         stream.write_all(&rdb_data)?;
-        let mut replicas = master.replicas.lock().unwrap();
-        replicas.push(stream);
+
+        let tx = master.replication_tx.clone();
+        let _ = tx.send(ReplicationMessage::AddReplica(stream));
+
         Ok(())
     }
 }
