@@ -797,6 +797,7 @@ impl Handler {
         Ok(())
     }
     fn handle_replconf(&mut self, stream: &mut TcpStream) -> io::Result<()> {
+        println!("================ handle replconf is called");
         stream.write_all(b"+OK\r\n")
     }
     fn handle_psync(&mut self, mut stream: TcpStream) -> io::Result<()> {
