@@ -799,6 +799,7 @@ impl Handler {
         stream.write_all(b"+OK\r\n")
     }
     fn handle_psync(&mut self, mut stream: TcpStream) -> io::Result<()> {
+        println!("============ handle_psync is called");
         let Role::Master(master) = &mut self.role else {
             return Err(io::Error::other("PSYNC called from non-master"));
         };
