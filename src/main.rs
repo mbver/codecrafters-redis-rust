@@ -33,7 +33,7 @@ fn main() {
                 });
             }
             Err(e) => {
-                println!("error: {}", e);
+                println!("error:  {}", e);
             }
         }
     }
