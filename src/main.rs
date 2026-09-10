@@ -14,7 +14,6 @@ use crate::config::parse_args;
 use crate::handler::{Handler, MasterState, RedisShared, Role};
 fn main() {
     println!("Logs from your program will appear here!");
-
     let config = parse_args();
     let redis = Arc::new(RedisShared::new());
     let listener = TcpListener::bind(format!("127.0.0.1:{}", config.port)).unwrap();

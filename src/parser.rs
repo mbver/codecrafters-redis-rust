@@ -42,7 +42,11 @@ impl Parser {
                         return Ok(None);
                     };
                     if self.buf[0] != b'*' {
-                        return Err(format!("expected '*', got {}", self.buf[0] as char));
+                        return Err(format!(
+                            "expected '*', got {}, {}",
+                            self.buf[0] as char,
+                            String::from_utf8_lossy(&self.buf)
+                        ));
                     }
                     let count: usize = std::str::from_utf8(&self.buf[1..line_end])
                         .map_err(|_| "bad utf8")?
