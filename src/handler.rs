@@ -240,7 +240,21 @@ impl Handler {
     }
 
     pub fn handle_replication(&mut self, stream: TcpStream) {
-        read_loop(stream, |stream, command| {
+        read_loop(stream, |mut stream, command| {
+            match command.as_slice() {
+                [cmd, subcmd, arg]
+                    if cmd.eq_ignore_ascii_case("replconf")
+                        && subcmd.eq_ignore_ascii_case("ack")
+                        && arg == "*" =>
+                {
+                    if let Err(e) =
+                        stream.write_all(b"*3\r\n$8\r\nreplconf\r\n$3\r\nACK\r\n$1\r\n*\r\n")
+                    {
+                        eprintln!("io error: {e}");
+                    }
+                }
+                _ => {}
+            }
             self.handle_repl_command(command);
             Next::Continue(stream)
         });
