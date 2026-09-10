@@ -811,6 +811,7 @@ impl Handler {
         stream.write_all(&rdb_data)?;
 
         let tx = master.replication_tx.clone();
+        println!("============ gonna add replica");
         let _ = tx.send(ReplicationMessage::AddReplica(stream));
 
         Ok(())
