@@ -241,29 +241,12 @@ impl Handler {
 
     pub fn handle_replication(&mut self, stream: TcpStream) {
         read_loop(stream, |mut stream, command| {
-            match command.as_slice() {
-                [cmd, subcmd, arg]
-                    if cmd.eq_ignore_ascii_case("replconf")
-                        && subcmd.eq_ignore_ascii_case("getack")
-                        && arg == "*" =>
-                {
-                    println!("=============== getack is invoked in repl ");
-                    if let Err(e) =
-                        stream.write_all(b"*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$1\r\n0\r\n")
-                    {
-                        eprintln!("io error: {e}");
-                    }
-
-                    return Next::Continue(stream);
-                }
-                _ => {}
-            }
-            self.handle_repl_command(command);
+            self.handle_repl_command(command, &mut stream);
             Next::Continue(stream)
         });
     }
 
-    fn handle_repl_command(&mut self, command: Vec<String>) {
+    fn handle_repl_command(&mut self, command: Vec<String>, stream: &mut TcpStream) {
         match command.as_slice() {
             [cmd, key, value, args @ ..] if cmd.eq_ignore_ascii_case("SET") => {
                 let _ = self.handle_set_internal(key, value, args);
@@ -279,6 +262,18 @@ impl Handler {
             }
             [cmd, key] if cmd.eq_ignore_ascii_case("INCR") => {
                 let _ = self.handle_incr_internal(key);
+            }
+            [cmd, subcmd, arg]
+                if cmd.eq_ignore_ascii_case("replconf")
+                    && subcmd.eq_ignore_ascii_case("getack")
+                    && arg == "*" =>
+            {
+                println!("=============== getack is invoked in repl ");
+                if let Err(e) =
+                    stream.write_all(b"*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$1\r\n0\r\n")
+                {
+                    eprintln!("io error: {e}");
+                }
             }
             _ => {
                 unreachable!()
