@@ -73,16 +73,13 @@ fn replication_loop(rx: Receiver<ReplicationMessage>) {
     while let Ok(msg) = rx.recv() {
         match msg {
             ReplicationMessage::AddReplica(stream) => {
-                println!("======= gonna push, now has: {}", replicas.len());
                 replicas.push(stream);
-                println!("======= after push, now has: {}", replicas.len());
             }
             ReplicationMessage::Command(data) => {
                 // TODO: a slow replica can block the whole loop and sender side is blocked
                 // each replica should have its own dedicated thread and queue? and how to handle the slow replica
                 // when the queue is full? ditch them?
                 replicas.retain_mut(|stream| stream.write_all(&data).is_ok());
-                println!("======= after retain_mut, now has: {}", replicas.len());
             }
         }
     }
@@ -795,11 +792,9 @@ impl Handler {
         Ok(())
     }
     fn handle_replconf(&mut self, stream: &mut TcpStream) -> io::Result<()> {
-        println!("================ handle replconf is called");
         stream.write_all(b"+OK\r\n")
     }
     fn handle_psync(&mut self, mut stream: TcpStream) -> io::Result<()> {
-        println!("============ handle_psync is called");
         let Role::Master(master) = &mut self.role else {
             return Err(io::Error::other("PSYNC called from non-master"));
         };
@@ -812,7 +807,6 @@ impl Handler {
         stream.write_all(&rdb_data)?;
 
         let tx = master.replication_tx.clone();
-        println!("============ gonna add replica");
         let _ = tx.send(ReplicationMessage::AddReplica(stream));
 
         Ok(())
