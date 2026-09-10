@@ -16,7 +16,6 @@ fn main() {
     println!("Logs from your program will appear here!");
 
     let config = parse_args();
-    println!("some logs");
     let redis = Arc::new(RedisShared::new());
     let listener = TcpListener::bind(format!("127.0.0.1:{}", config.port)).unwrap();
     let role = match &config.replica_of {
