@@ -248,7 +248,7 @@ impl Handler {
                         && arg == "*" =>
                 {
                     if let Err(e) =
-                        stream.write_all(b"*3\r\n$8\r\nreplconf\r\n$3\r\nACK\r\n$1\r\n*\r\n")
+                        stream.write_all(b"*3\r\n$8\r\nreplconf\r\n$6\r\nGETACK\r\n$1\r\n*\r\n")
                     {
                         eprintln!("io error: {e}");
                     }
