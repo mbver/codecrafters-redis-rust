@@ -26,7 +26,6 @@ fn main() {
         }
         None => Role::Master(Arc::new(MasterState::new())),
     };
-    println!("ha ha");
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
