@@ -247,6 +247,7 @@ impl Handler {
                         && subcmd.eq_ignore_ascii_case("ack")
                         && arg == "*" =>
                 {
+                    println!("=============== getack invoked in repl");
                     if let Err(e) =
                         stream.write_all(b"*3\r\n$8\r\nreplconf\r\n$6\r\nGETACK\r\n$1\r\n*\r\n")
                     {
@@ -350,7 +351,8 @@ impl Handler {
                     && subcmd.eq_ignore_ascii_case("ack")
                     && arg == "*" =>
             {
-                stream.write_all(b"*3\r\n$8\r\nreplconf\r\n$3\r\nACK\r\n$1\r\n*\r\n")
+                println!("============== getack invoked in handler");
+                stream.write_all(b"*3\r\n$8\r\nreplconf\r\n$6\r\nGETACK\r\n$1\r\n*\r\n")
             }
             [cmd, ..] if cmd.eq_ignore_ascii_case("REPLCONF") => self.handle_replconf(stream),
             _ => {
