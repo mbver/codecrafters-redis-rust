@@ -247,7 +247,7 @@ impl Handler {
                         && subcmd.eq_ignore_ascii_case("getack")
                         && arg == "*" =>
                 {
-                    println!("=============== getack is invoked in repl");
+                    // println!("=============== getack is invoked in repl");
                     if let Err(e) =
                         stream.write_all(b"*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$1\r\n0\r\n")
                     {
