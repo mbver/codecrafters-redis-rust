@@ -138,6 +138,44 @@ fn encode_command(command: &[String]) -> Vec<u8> {
     out
 }
 
+enum Next {
+    Continue(TcpStream),
+    Done,
+}
+
+fn read_loop<F>(mut stream: TcpStream, mut command_handler: F)
+where
+    F: FnMut(TcpStream, Vec<String>) -> Next, // Ok(true): keep going
+{
+    let mut parser = Parser::new();
+    let mut tmp = [0u8; 512];
+
+    loop {
+        while let Some(command) = parser.try_parse().unwrap_or_else(|e| {
+            eprintln!("protocol error: {e}");
+            std::process::exit(1); // or handle more gracefully
+        }) {
+            let command: Vec<String> = command
+                .iter()
+                .map(|b| String::from_utf8_lossy(b).to_string())
+                .collect();
+            match command_handler(stream, command) {
+                Next::Continue(s) => stream = s,
+                Next::Done => return,
+            }
+        }
+
+        let n = match stream.read(&mut tmp) {
+            Ok(0) => return,
+            Ok(n) => n,
+            Err(e) => {
+                eprintln!("read error: {e}");
+                return;
+            }
+        };
+        parser.feed(&tmp[..n]);
+    }
+}
 impl Handler {
     pub fn new(role: Role, redis: SharedRedis) -> Self {
         Self {
@@ -147,86 +185,41 @@ impl Handler {
             watch_list: HashMap::new(),
         }
     }
-    pub fn handle(&mut self, mut stream: TcpStream) {
-        let mut parser = Parser::new();
-        let mut tmp = [0u8; 512];
-
-        loop {
-            while let Some(command) = parser.try_parse().unwrap_or_else(|e| {
-                eprintln!("protocol error: {e}");
-                std::process::exit(1); // or handle more gracefully
-            }) {
-                let command: Vec<String> = command
-                    .iter()
-                    .map(|b| String::from_utf8_lossy(b).to_string())
-                    .collect();
-                if let Some(cmd) = command.first()
-                    && cmd.eq_ignore_ascii_case("PSYNC")
-                {
-                    if let Err(e) = self.handle_psync(stream) {
-                        eprintln!("psync io error: {:?}", e);
-                    }
-                    return;
+    pub fn handle(&mut self, stream: TcpStream) {
+        read_loop(stream, |mut stream, command| {
+            if let Some(cmd) = command.first()
+                && cmd.eq_ignore_ascii_case("PSYNC")
+            {
+                if let Err(e) = self.handle_psync(stream) {
+                    eprintln!("psync io error: {:?}", e);
                 }
-                let is_write = is_write_command(&command);
-                let encoded = encode_command(&command);
-                if let Err(e) = self.handle_command(&mut stream, command) {
-                    eprintln!("io error: {:?}", e);
-                    return;
-                }
-                if is_write {
-                    if let Role::Master(master) = &mut self.role {
-                        let mut replicas = master.replicas.lock().unwrap();
-                        for stream in replicas.iter_mut() {
-                            if let Err(e) = stream.write_all(&encoded) {
-                                eprintln!("io error: {:?}", e);
-                            }
+                return Next::Done;
+            }
+            let is_write = is_write_command(&command); // USE OPTION for encoded and eliminate is_write
+            let encoded = encode_command(&command);
+            if let Err(e) = self.handle_command(&mut stream, command) {
+                eprintln!("io error: {:?}", e);
+                return Next::Done;
+            }
+            if is_write {
+                if let Role::Master(master) = &mut self.role {
+                    let mut replicas = master.replicas.lock().unwrap();
+                    for stream in replicas.iter_mut() {
+                        if let Err(e) = stream.write_all(&encoded) {
+                            eprintln!("io error: {:?}", e);
                         }
                     }
                 }
             }
-
-            let n = match stream.read(&mut tmp) {
-                Ok(0) => return,
-                Ok(n) => n,
-                Err(e) => {
-                    eprintln!("read error: {e}");
-                    return;
-                }
-            };
-            parser.feed(&tmp[..n]);
-        }
+            Next::Continue(stream)
+        });
     }
 
-    pub fn handle_replication(&mut self, mut stream: TcpStream) {
-        let mut parser = Parser::new();
-        let mut tmp = [0u8; 512];
-
-        // TODO: loop logic is repetitive.
-        // Find some way to merge them.
-        loop {
-            while let Some(command) = parser.try_parse().unwrap_or_else(|e| {
-                eprintln!("protocol error: {e}");
-                std::process::exit(1); // or handle more gracefully
-            }) {
-                let command: Vec<String> = command
-                    .iter()
-                    .map(|b| String::from_utf8_lossy(b).to_string())
-                    .collect();
-
-                self.handle_repl_command(command);
-            }
-
-            let n = match stream.read(&mut tmp) {
-                Ok(0) => return,
-                Ok(n) => n,
-                Err(e) => {
-                    eprintln!("read error: {e}");
-                    return;
-                }
-            };
-            parser.feed(&tmp[..n]);
-        }
+    pub fn handle_replication(&mut self, stream: TcpStream) {
+        read_loop(stream, |stream, command| {
+            self.handle_repl_command(command);
+            Next::Continue(stream)
+        });
     }
 
     fn handle_repl_command(&mut self, command: Vec<String>) {
