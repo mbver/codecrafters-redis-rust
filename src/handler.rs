@@ -249,7 +249,7 @@ impl Handler {
                 {
                     println!("=============== getack invoked in repl");
                     if let Err(e) =
-                        stream.write_all(b"*3\r\n$8\r\nreplconf\r\n$3\r\nack\r\n$1\r\n0\r\n")
+                        stream.write_all(b"*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$1\r\n0\r\n")
                     {
                         eprintln!("io error: {e}");
                     }
