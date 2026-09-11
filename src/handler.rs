@@ -295,6 +295,12 @@ impl Handler {
                     eprintln!("io error: {e}");
                 }
             }
+            [cmd] if cmd.eq_ignore_ascii_case("PING") => {
+                if let Err(e) = stream.write_all(b"+PONG\r\n") {
+                    eprintln!("io error: {e}");
+                }
+            }
+
             _ => {
                 unreachable!()
             }
