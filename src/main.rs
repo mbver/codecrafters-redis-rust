@@ -46,7 +46,6 @@ fn fatal(msg: &str) -> ! {
 }
 
 fn start_replica(host: &str, port: u16, my_port: u16, redis: Arc<RedisShared>) {
-    println!("============ replica starting");
     let Ok(Some(mut stream)) = ping(host, port) else {
         fatal("ping failed");
     };
@@ -57,9 +56,7 @@ fn start_replica(host: &str, port: u16, my_port: u16, redis: Arc<RedisShared>) {
         fatal("psync failed");
     }
     let mut client = Handler::new(Role::Slave, redis);
-    println!("======= gonna start client");
     std::thread::spawn(move || {
-        println!("======== replication loop started");
         client.handle_replication(stream);
     });
 }
