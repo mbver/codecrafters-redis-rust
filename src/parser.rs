@@ -64,7 +64,7 @@ impl Parser {
                 ParseState::ReadingBulkHeader { remaining, items } => {
                     if *remaining == 0 {
                         // array complete
-                        let items = items.clone();
+                        let items = items.clone(); // TODO: should std::mem::take the items?
                         self.state = ParseState::ReadingArrayHeader;
                         return Ok(Some(items));
                     }
@@ -114,6 +114,6 @@ impl Parser {
     }
 }
 
-fn find_crlf(buf: &[u8]) -> Option<usize> {
+pub fn find_crlf(buf: &[u8]) -> Option<usize> {
     buf.windows(2).position(|w| w == b"\r\n")
 }

@@ -10,6 +10,7 @@ mod redis;
 mod handler;
 
 mod config;
+
 use crate::config::parse_args;
 use crate::handler::{Handler, MasterState, RedisShared, Role};
 fn main() {
@@ -108,13 +109,35 @@ fn send_replconf(stream: &mut TcpStream, port: u16) -> io::Result<()> {
 
 fn send_psync(stream: &mut TcpStream, _: Option<String>, _: i64) -> io::Result<()> {
     write!(stream, "*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n")?;
-    let mut buf = [0; 512];
-    let _ = stream.read(&mut buf)?;
-    // if &buf[..n] != b"+FULLRESYNC <REPL_ID> 0\r\n" {
-    //     return Err(io::Error::new(
-    //         io::ErrorKind::InvalidData,
-    //         "invalid replconf result",
-    //     ));
-    // }
+    let _ = readline_exact(stream)?;
+    let line = readline_exact(stream)?;
+    let data_len = parse_bulk_len(&line)?;
+    let mut buf = vec![0u8; data_len];
+    let _ = stream.read_exact(&mut buf)?;
     Ok(())
+}
+
+fn readline_exact(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
+    let mut line: Vec<u8> = Vec::new();
+    let mut byte = [0u8; 1];
+    loop {
+        stream.read_exact(&mut byte)?;
+        if byte[0] == b'\n' {
+            if line.last() == Some(&b'\r') {
+                line.pop();
+            }
+            return Ok(line);
+        }
+        line.push(byte[0])
+    }
+}
+
+fn parse_bulk_len(line: &[u8]) -> io::Result<usize> {
+    let s = std::str::from_utf8(line)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid utf8"))?;
+    let s = s
+        .strip_prefix('$')
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing $"))?;
+    s.parse::<usize>()
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid length"))
 }

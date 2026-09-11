@@ -204,6 +204,7 @@ where
         parser.feed(&tmp[..n]);
     }
 }
+
 impl Handler {
     pub fn new(role: Role, redis: SharedRedis) -> Self {
         Self {
