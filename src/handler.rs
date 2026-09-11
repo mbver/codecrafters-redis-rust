@@ -296,9 +296,7 @@ impl Handler {
                 }
             }
             [cmd] if cmd.eq_ignore_ascii_case("PING") => {
-                if let Err(e) = stream.write_all(b"+PONG\r\n") {
-                    eprintln!("io error: {e}");
-                }
+                // do nothing for non-write command
             }
 
             _ => {
