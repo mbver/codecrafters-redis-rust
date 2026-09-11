@@ -12,7 +12,7 @@ mod handler;
 mod config;
 
 use crate::config::parse_args;
-use crate::handler::{Handler, MasterState, RedisShared, Role};
+use crate::handler::{Handler, MasterState, RedisShared, Role, SlaveInfo};
 fn main() {
     println!("Logs from your program will appear here!");
     let config = parse_args();
@@ -21,7 +21,7 @@ fn main() {
     let role = match &config.replica_of {
         Some((host, port)) => {
             start_replica(host, *port, config.port, redis.clone());
-            Role::Slave
+            Role::Slave(SlaveInfo { offset: 0 }) // TODO: slave info only applied in replication loop? it shouldn't be in main-loop? or replica shouldn't be in main-loop altogether?
         }
         None => Role::Master(Arc::new(MasterState::new())),
     };
@@ -55,7 +55,7 @@ fn start_replica(host: &str, port: u16, my_port: u16, redis: Arc<RedisShared>) {
     if send_psync(&mut stream, None, -1).is_err() {
         fatal("psync failed");
     }
-    let mut client = Handler::new(Role::Slave, redis);
+    let mut client = Handler::new(Role::Slave(SlaveInfo { offset: 0 }), redis);
     std::thread::spawn(move || {
         client.handle_replication(stream);
     });

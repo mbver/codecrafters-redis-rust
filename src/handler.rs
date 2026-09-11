@@ -12,7 +12,8 @@ use std::{
 
 use std::fmt::Write as FmtWrite;
 
-use crate::parser::Parser;
+use crate::fatal;
+use crate::parser::{Command, Parser};
 use crate::redis::{EntryId, Redis, RedisError, StreamEntry, Value};
 
 pub struct RedisShared {
@@ -54,6 +55,11 @@ pub struct MasterState {
     replication_tx: Sender<ReplicationMessage>,
 }
 
+#[derive(Clone)]
+pub struct SlaveInfo {
+    pub offset: usize,
+}
+
 impl MasterState {
     pub fn new() -> Self {
         let (tx, rx) = channel();
@@ -88,14 +94,14 @@ fn replication_loop(rx: Receiver<ReplicationMessage>) {
 #[derive(Clone)]
 pub enum Role {
     Master(Arc<MasterState>),
-    Slave,
+    Slave(SlaveInfo),
 }
 
 impl Display for Role {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Role::Master(_) => write!(f, "master"),
-            Role::Slave => write!(f, "slave"),
+            Role::Slave(_) => write!(f, "slave"),
         }
     }
 }
@@ -173,7 +179,7 @@ enum Next {
 
 fn read_loop<F>(mut stream: TcpStream, mut command_handler: F)
 where
-    F: FnMut(TcpStream, Vec<String>) -> Next, // Ok(true): keep going
+    F: FnMut(TcpStream, Command) -> Next, // Ok(true): keep going
 {
     let mut parser = Parser::new();
     let mut tmp = [0u8; 512];
@@ -183,10 +189,6 @@ where
             eprintln!("protocol error: {e}");
             std::process::exit(1); // or handle more gracefully
         }) {
-            let command: Vec<String> = command
-                .iter()
-                .map(|b| String::from_utf8_lossy(b).to_string())
-                .collect();
             match command_handler(stream, command) {
                 Next::Continue(s) => stream = s,
                 Next::Done => return,
@@ -216,6 +218,11 @@ impl Handler {
     }
     pub fn handle(&mut self, stream: TcpStream) {
         read_loop(stream, |mut stream, command| {
+            let command: Vec<String> = command
+                .items
+                .iter()
+                .map(|b| String::from_utf8_lossy(b).to_string())
+                .collect();
             if let Some(cmd) = command.first()
                 && cmd.eq_ignore_ascii_case("PSYNC")
             {
@@ -247,7 +254,13 @@ impl Handler {
         });
     }
 
-    fn handle_repl_command(&mut self, command: Vec<String>, stream: &mut TcpStream) {
+    fn handle_repl_command(&mut self, command: Command, stream: &mut TcpStream) {
+        let num_bytes = command.num_bytes;
+        let command: Vec<String> = command
+            .items
+            .iter()
+            .map(|b| String::from_utf8_lossy(b).to_string())
+            .collect();
         match command.as_slice() {
             [cmd, key, value, args @ ..] if cmd.eq_ignore_ascii_case("SET") => {
                 let _ = self.handle_set_internal(key, value, args);
@@ -269,9 +282,16 @@ impl Handler {
                     && subcmd.eq_ignore_ascii_case("getack")
                     && arg == "*" =>
             {
-                if let Err(e) =
-                    stream.write_all(b"*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$1\r\n0\r\n")
-                {
+                let Role::Slave(SlaveInfo { offset }) = self.role else {
+                    fatal("handle_repl_command is called in non-slave node");
+                };
+                let offset = offset.to_string();
+                if let Err(e) = write!(
+                    stream,
+                    "*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n${}\r\n{}\r\n",
+                    offset.len(),
+                    offset
+                ) {
                     eprintln!("io error: {e}");
                 }
             }
@@ -279,6 +299,10 @@ impl Handler {
                 unreachable!()
             }
         }
+        let Role::Slave(SlaveInfo { offset }) = &mut self.role else {
+            fatal("handle_repl_command is called in non-slave node");
+        };
+        *offset += num_bytes;
     }
 
     fn handle_command(&mut self, stream: &mut TcpStream, command: Vec<String>) -> io::Result<()> {

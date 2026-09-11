@@ -20,6 +20,11 @@ pub struct Parser {
     buf: Vec<u8>,
 }
 
+pub struct Command {
+    pub items: Vec<Vec<u8>>,
+    pub num_bytes: usize, // number of bytes consumed by parser
+}
+
 impl Parser {
     pub fn new() -> Self {
         Parser {
@@ -34,7 +39,8 @@ impl Parser {
 
     /// Advance the state machine as far as possible.
     /// Returns Some(command) each time a full array is completed.
-    pub fn try_parse(&mut self) -> Result<Option<Vec<Vec<u8>>>, String> {
+    pub fn try_parse(&mut self) -> Result<Option<Command>, String> {
+        let mut num_bytes = 0;
         loop {
             match &mut self.state {
                 ParseState::ReadingArrayHeader => {
@@ -52,7 +58,7 @@ impl Parser {
                         .map_err(|_| "bad utf8")?
                         .parse()
                         .map_err(|_| "bad count")?;
-
+                    num_bytes += line_end + 2;
                     self.buf.drain(0..line_end + 2); // consume "*N\r\n"
                     self.state = ParseState::ReadingBulkHeader {
                         remaining: count,
@@ -66,7 +72,7 @@ impl Parser {
                         // array complete
                         let items = items.clone(); // TODO: should std::mem::take the items?
                         self.state = ParseState::ReadingArrayHeader;
-                        return Ok(Some(items));
+                        return Ok(Some(Command { items, num_bytes }));
                     }
                     let Some(line_end) = find_crlf(&self.buf) else {
                         return Ok(None);
@@ -78,7 +84,7 @@ impl Parser {
                         .map_err(|_| "bad utf8")?
                         .parse()
                         .map_err(|_| "bad bulk len")?;
-
+                    num_bytes += line_end + 2;
                     self.buf.drain(0..line_end + 2); // consume "$N\r\n"
                     self.state = ParseState::ReadingBulkBody {
                         remaining: *remaining,
@@ -102,6 +108,7 @@ impl Parser {
 
                     let mut items = std::mem::take(items);
                     items.push(self.buf[0..*bulk_len].to_vec());
+                    num_bytes += total_needed;
                     self.buf.drain(0..total_needed); // consume payload + \r\n
 
                     self.state = ParseState::ReadingBulkHeader {
