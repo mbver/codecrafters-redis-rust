@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::io::{self};
 use std::str;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -53,6 +54,7 @@ enum ReplicationMessage {
 pub struct MasterState {
     info: MasterInfo,
     replication_tx: Sender<ReplicationMessage>,
+    replica_count: Arc<AtomicUsize>,
 }
 
 #[derive(Clone)]
@@ -63,29 +65,36 @@ pub struct SlaveInfo {
 impl MasterState {
     pub fn new() -> Self {
         let (tx, rx) = channel();
-        std::thread::spawn(move || {
-            replication_loop(rx);
+        let replica_count = Arc::new(AtomicUsize::new(0));
+        std::thread::spawn({
+            let replica_count = Arc::clone(&replica_count);
+            move || {
+                replication_loop(rx, replica_count);
+            }
         });
         Self {
             info: MasterInfo::new(),
             replication_tx: tx,
+            replica_count,
         }
     }
 }
 
-fn replication_loop(rx: Receiver<ReplicationMessage>) {
+fn replication_loop(rx: Receiver<ReplicationMessage>, replica_count: Arc<AtomicUsize>) {
     let mut replicas = Vec::<TcpStream>::new();
 
     while let Ok(msg) = rx.recv() {
         match msg {
             ReplicationMessage::AddReplica(stream) => {
                 replicas.push(stream);
+                replica_count.store(replicas.len(), Ordering::Release);
             }
             ReplicationMessage::Command(data) => {
                 // TODO: a slow replica can block the whole loop and sender side is blocked
                 // each replica should have its own dedicated thread and queue? and how to handle the slow replica
                 // when the queue is full? ditch them?
                 replicas.retain_mut(|stream| stream.write_all(&data).is_ok());
+                replica_count.store(replicas.len(), Ordering::Release);
             }
         }
     }
@@ -842,7 +851,11 @@ impl Handler {
     }
 
     fn handle_wait(&mut self, stream: &mut TcpStream) -> io::Result<()> {
-        write!(stream, ":{}\r\n", 0)
+        let Role::Master(master) = &self.role else {
+            return Err(io::Error::other("WAIT called from non-master"));
+        };
+        let replica_count = master.replica_count.load(Ordering::Acquire);
+        write!(stream, ":{}\r\n", replica_count)
     }
 }
 
