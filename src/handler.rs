@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::fmt::Display;
-use std::io::{self};
+use std::io::{self, Error};
+use std::ops::Add;
 use std::str;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -49,12 +49,16 @@ impl Transaction {
 enum ReplicationMessage {
     AddReplica(TcpStream),
     Command(Vec<u8>),
+    Wait {
+        num_replicas: usize,
+        timeout: Duration,
+        response: Sender<usize>,
+    },
 }
 
 pub struct MasterState {
     info: MasterInfo,
     replication_tx: Sender<ReplicationMessage>,
-    replica_count: Arc<AtomicUsize>,
 }
 
 #[derive(Clone)]
@@ -65,39 +69,127 @@ pub struct SlaveInfo {
 impl MasterState {
     pub fn new() -> Self {
         let (tx, rx) = channel();
-        let replica_count = Arc::new(AtomicUsize::new(0));
         std::thread::spawn({
-            let replica_count = Arc::clone(&replica_count);
             move || {
-                replication_loop(rx, replica_count);
+                replication_loop(rx);
             }
         });
         Self {
             info: MasterInfo::new(),
             replication_tx: tx,
-            replica_count,
         }
     }
 }
 
-fn replication_loop(rx: Receiver<ReplicationMessage>, replica_count: Arc<AtomicUsize>) {
+// This signature seems not handle the error well. we seems violate throw early and catch late principle
+fn replication_loop(rx: Receiver<ReplicationMessage>) {
     let mut replicas = Vec::<TcpStream>::new();
-
+    let mut current_offset: usize = 0;
     while let Ok(msg) = rx.recv() {
         match msg {
             ReplicationMessage::AddReplica(stream) => {
+                if let Err(e) = stream.set_read_timeout(Some(Duration::from_millis(100))) {
+                    eprintln!("io error: {e}");
+                    continue;
+                };
                 replicas.push(stream);
-                replica_count.store(replicas.len(), Ordering::Release);
             }
             ReplicationMessage::Command(data) => {
                 // TODO: a slow replica can block the whole loop and sender side is blocked
                 // each replica should have its own dedicated thread and queue? and how to handle the slow replica
                 // when the queue is full? ditch them?
+                current_offset += data.len();
                 replicas.retain_mut(|stream| stream.write_all(&data).is_ok());
-                replica_count.store(replicas.len(), Ordering::Release);
+            }
+            ReplicationMessage::Wait {
+                num_replicas,
+                timeout,
+                response,
+            } => {
+                let cmd = b"*3\r\n$8\r\nreplconf\r\n6\r\ngetack\r\n1\r\n*\r\n";
+                let deadline = Instant::now().add(timeout);
+                let mut replica_count; // number of replicas caught up
+                loop {
+                    replica_count = 0;
+                    replicas.retain_mut(|stream| {
+                        if stream.write_all(cmd).is_err() {
+                            return false;
+                        };
+                        let Ok(offset) = read_ack_resp(stream) else {
+                            return false;
+                        };
+                        if offset == current_offset {
+                            replica_count += 1;
+                        }
+                        true
+                    });
+                    current_offset += cmd.len();
+                    if replica_count >= num_replicas || Instant::now() > deadline {
+                        break;
+                    }
+                }
+                let _ = response.send(replica_count);
             }
         }
     }
+}
+
+fn read_ack_resp(stream: &mut TcpStream) -> io::Result<usize> {
+    let header = readline_exact(stream)?;
+    if header != b"*3" {
+        return Err(Error::new(io::ErrorKind::InvalidData, "invalid header"));
+    }
+    let len = readline_exact(stream)?;
+    if len != b"$8" {
+        return Err(Error::new(io::ErrorKind::InvalidData, "invalid header"));
+    }
+    let mut buf = vec![0u8; 10];
+    stream.read_exact(&mut buf)?;
+    if buf != b"REPLCONF\r\n" {
+        return Err(Error::new(io::ErrorKind::InvalidData, "invalid command"));
+    }
+    let len = readline_exact(stream)?;
+    if len != b"$3" {
+        return Err(Error::new(io::ErrorKind::InvalidData, "invalid header"));
+    }
+    let mut buf = vec![0u8; 5];
+    stream.read_exact(&mut buf)?;
+    if buf != b"ACK\r\n" {
+        return Err(Error::new(io::ErrorKind::InvalidData, "invalid command"));
+    }
+    let len = readline_exact(stream)?;
+    let len = parse_bulk_len(&len)?;
+    let mut buf = vec![0u8; len + 2];
+    stream.read_exact(&mut buf)?;
+    if &buf[len..] != b"\r\n" {
+        return Err(Error::new(io::ErrorKind::InvalidData, "crlf missing"));
+    }
+    parse_bulk_len(&buf[..len])
+}
+
+pub fn readline_exact(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
+    let mut line: Vec<u8> = Vec::new();
+    let mut byte = [0u8; 1];
+    loop {
+        stream.read_exact(&mut byte)?;
+        if byte[0] == b'\n' {
+            if line.last() == Some(&b'\r') {
+                line.pop();
+            }
+            return Ok(line);
+        }
+        line.push(byte[0])
+    }
+}
+
+pub fn parse_bulk_len(line: &[u8]) -> io::Result<usize> {
+    let s = std::str::from_utf8(line)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid utf8"))?;
+    let s = s
+        .strip_prefix('$')
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing $"))?;
+    s.parse::<usize>()
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid length"))
 }
 
 #[derive(Clone)]
@@ -380,7 +472,9 @@ impl Handler {
             [cmd] if cmd.eq_ignore_ascii_case("MULTI") => self.handle_multi(stream),
             [cmd, subcmd] if cmd.eq_ignore_ascii_case("INFO") => self.handle_info(stream, subcmd),
             [cmd, ..] if cmd.eq_ignore_ascii_case("REPLCONF") => self.handle_replconf(stream),
-            [cmd, ..] if cmd.eq_ignore_ascii_case("WAIT") => self.handle_wait(stream),
+            [cmd, num_replicas, timeout] if cmd.eq_ignore_ascii_case("WAIT") => {
+                self.handle_wait(stream, num_replicas, timeout)
+            }
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
             }
@@ -850,11 +944,33 @@ impl Handler {
         Ok(())
     }
 
-    fn handle_wait(&mut self, stream: &mut TcpStream) -> io::Result<()> {
+    fn handle_wait(
+        &mut self,
+        stream: &mut TcpStream,
+        num_replicas: &str,
+        timeout: &str,
+    ) -> io::Result<()> {
+        let num_replicas = num_replicas
+            .parse::<usize>()
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        let timeout = timeout
+            .parse::<u64>()
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        let timeout = Duration::from_millis(timeout);
         let Role::Master(master) = &self.role else {
             return Err(io::Error::other("WAIT called from non-master"));
         };
-        let replica_count = master.replica_count.load(Ordering::Acquire);
+        let (tx, rx) = channel::<usize>();
+        let _ = master.replication_tx.send(ReplicationMessage::Wait {
+            num_replicas,
+            timeout,
+            response: tx,
+        });
+        // TODO: is this error ok?
+        let replica_count = rx
+            .recv()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        // let replica_count = master.replica_count.load(Ordering::Acquire);
         write!(stream, ":{}\r\n", replica_count)
     }
 }
@@ -875,20 +991,3 @@ fn write_x_read(stream: &mut TcpStream, values: &[(String, Vec<StreamEntry>)]) -
     }
     Ok(())
 }
-
-// fn extract_key(cmd: &[String]) -> Option<String> {
-//     match cmd {
-//         [cmd, key, ..]
-//             if cmd.eq_ignore_ascii_case("SET")
-//                 || cmd.eq_ignore_ascii_case("RPUSH")
-//                 || cmd.eq_ignore_ascii_case("LPUSH")
-//                 || cmd.eq_ignore_ascii_case("LPOP")
-//                 || cmd.eq_ignore_ascii_case("BLPOP")
-//                 || cmd.eq_ignore_ascii_case("XADD")
-//                 || cmd.eq_ignore_ascii_case("INCR") =>
-//         {
-//             Some(key.clone())
-//         }
-//         _ => None,
-//     }
-// }

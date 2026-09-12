@@ -12,7 +12,9 @@ mod handler;
 mod config;
 
 use crate::config::parse_args;
-use crate::handler::{Handler, MasterState, RedisShared, Role, SlaveInfo};
+use crate::handler::{
+    Handler, MasterState, RedisShared, Role, SlaveInfo, parse_bulk_len, readline_exact,
+};
 fn main() {
     println!("Logs from your program will appear here!");
     let config = parse_args();
@@ -112,29 +114,4 @@ fn send_psync(stream: &mut TcpStream, _: Option<String>, _: i64) -> io::Result<(
     let mut buf = vec![0u8; data_len];
     let _ = stream.read_exact(&mut buf)?;
     Ok(())
-}
-
-fn readline_exact(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
-    let mut line: Vec<u8> = Vec::new();
-    let mut byte = [0u8; 1];
-    loop {
-        stream.read_exact(&mut byte)?;
-        if byte[0] == b'\n' {
-            if line.last() == Some(&b'\r') {
-                line.pop();
-            }
-            return Ok(line);
-        }
-        line.push(byte[0])
-    }
-}
-
-fn parse_bulk_len(line: &[u8]) -> io::Result<usize> {
-    let s = std::str::from_utf8(line)
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid utf8"))?;
-    let s = s
-        .strip_prefix('$')
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing $"))?;
-    s.parse::<usize>()
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid length"))
 }
