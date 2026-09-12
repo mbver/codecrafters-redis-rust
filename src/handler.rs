@@ -842,7 +842,7 @@ impl Handler {
     }
 
     fn handle_wait(&mut self, stream: &mut TcpStream) -> io::Result<()> {
-        write!(stream, ":{}", 0)
+        write!(stream, ":{}\r\n", 0)
     }
 }
 
