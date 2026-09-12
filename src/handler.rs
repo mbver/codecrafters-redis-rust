@@ -371,6 +371,7 @@ impl Handler {
             [cmd] if cmd.eq_ignore_ascii_case("MULTI") => self.handle_multi(stream),
             [cmd, subcmd] if cmd.eq_ignore_ascii_case("INFO") => self.handle_info(stream, subcmd),
             [cmd, ..] if cmd.eq_ignore_ascii_case("REPLCONF") => self.handle_replconf(stream),
+            [cmd, ..] if cmd.eq_ignore_ascii_case("WAIT") => self.handle_wait(stream),
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
             }
@@ -838,6 +839,10 @@ impl Handler {
         let _ = tx.send(ReplicationMessage::AddReplica(stream));
 
         Ok(())
+    }
+
+    fn handle_wait(&mut self, stream: &mut TcpStream) -> io::Result<()> {
+        write!(stream, ":{}", 0)
     }
 }
 
