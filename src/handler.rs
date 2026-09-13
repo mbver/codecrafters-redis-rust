@@ -106,6 +106,7 @@ fn replication_loop(rx: Receiver<ReplicationMessage>) {
                 timeout,
                 response,
             } => {
+                println!("=========== got wait msg");
                 let cmd = b"*3\r\n$8\r\nreplconf\r\n$6\r\nGETACK\r\n$1\r\n*\r\n";
                 let deadline = Instant::now().add(timeout);
                 let mut replica_count; // number of replicas caught up
