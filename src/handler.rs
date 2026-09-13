@@ -118,6 +118,7 @@ fn replication_loop(rx: Receiver<ReplicationMessage>) {
                         let Ok(offset) = read_ack_resp(stream) else {
                             return false;
                         };
+                        println!("====== offset: {}, current: {}", offset, current_offset);
                         if offset == current_offset {
                             replica_count += 1;
                         }
