@@ -125,6 +125,7 @@ fn replication_loop(rx: Receiver<ReplicationMessage>) {
                         if offset == current_offset {
                             replica_count += 1;
                         }
+                        println!("======== replica_count now: {}", replica_count);
                         true
                     });
                     current_offset += cmd.len();
