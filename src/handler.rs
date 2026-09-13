@@ -106,9 +106,12 @@ fn replication_loop(rx: Receiver<ReplicationMessage>) {
                 timeout,
                 response,
             } => {
+                if current_offset == 0 {
+                    let _ = response.send(replicas.len());
+                    return;
+                }
                 let cmd = b"*3\r\n$8\r\nREPLCONF\r\n$6\r\nGETACK\r\n$1\r\n*\r\n";
                 // let deadline = Instant::now().add(timeout);
-
                 let mut replica_count: usize; // number of replicas caught up
                 replica_count = 0;
                 std::thread::scope(|scope| {
