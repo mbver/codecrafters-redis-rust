@@ -108,40 +108,45 @@ fn replication_loop(rx: Receiver<ReplicationMessage>) {
             } => {
                 let cmd = b"*3\r\n$8\r\nREPLCONF\r\n$6\r\nGETACK\r\n$1\r\n*\r\n";
                 let deadline = Instant::now().add(timeout);
-                let mut replica_count; // number of replicas caught up
+
+                let mut replica_count: usize; // number of replicas caught up
                 loop {
                     replica_count = 0;
-                    replicas.iter_mut().for_each(|stream| {
-                        println!(
-                            "======== gonna send getack command, peer: {}",
-                            stream.peer_addr().unwrap()
-                        );
-                        if stream.write_all(cmd).is_err() {
-                            println!(
-                                "========== stream write_all failed, peer: {}",
-                                stream.peer_addr().unwrap()
-                            );
-                            return;
-                        };
-                        println!(
-                            "======== finish send getack command, peer: {}",
-                            stream.peer_addr().unwrap()
-                        );
-                        let Ok(offset) = read_ack_resp(stream) else {
-                            println!(
-                                "=========== read_ack_resp failed, peer: {}",
-                                stream.peer_addr().unwrap()
-                            );
-                            return;
-                        };
-                        println!("====== offset: {}, current: {}", offset, current_offset);
-                        if offset == current_offset {
-                            replica_count += 1;
+                    std::thread::scope(|scope| {
+                        let handles: Vec<_> = replicas
+                            .iter_mut()
+                            .map(|stream| {
+                                scope.spawn(|| {
+                                    println!(
+                                        "======== gonna send getack command, peer: {}",
+                                        stream.peer_addr().unwrap()
+                                    );
+                                    stream.write_all(cmd)?;
+                                    println!(
+                                        "======== finish send getack command, peer: {}",
+                                        stream.peer_addr().unwrap()
+                                    );
+                                    read_ack_resp(stream)
+                                })
+                            })
+                            .collect();
+
+                        for handle in handles {
+                            match handle.join() {
+                                Ok(Ok(offset)) => {
+                                    if offset >= current_offset {
+                                        replica_count += 1;
+                                    }
+                                }
+                                Ok(Err(e)) => {
+                                    println!("============= error in handle join: {}", e);
+                                }
+                                _ => {}
+                            }
                         }
-                        println!("======== replica_count now: {}", replica_count);
                     });
                     println!(
-                        "========replicas: {}, replica_count {} after retain_mut",
+                        "========replicas: {}, replica_count {} after the checking all replicas",
                         replicas.len(),
                         replica_count
                     );
