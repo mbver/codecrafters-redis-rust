@@ -140,6 +140,7 @@ fn replication_loop(rx: Receiver<ReplicationMessage>) {
 
 fn read_ack_resp(stream: &mut TcpStream) -> io::Result<usize> {
     let header = readline_exact(stream)?;
+    println!("====== header read {}", String::from_utf8_lossy(&header));
     if header != b"*3" {
         return Err(Error::new(io::ErrorKind::InvalidData, "invalid header"));
     }
