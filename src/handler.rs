@@ -88,10 +88,10 @@ fn replication_loop(rx: Receiver<ReplicationMessage>) {
     while let Ok(msg) = rx.recv() {
         match msg {
             ReplicationMessage::AddReplica(stream) => {
-                // if let Err(e) = stream.set_read_timeout(Some(Duration::from_millis(100))) {
-                //     eprintln!("io error: {e}");
-                //     continue;
-                // };
+                if let Err(e) = stream.set_read_timeout(Some(Duration::from_millis(50))) {
+                    eprintln!("io error: {e}");
+                    continue;
+                };
                 replicas.push(stream);
             }
             ReplicationMessage::Command(data) => {
