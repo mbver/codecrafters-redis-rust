@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::io::{self, Error};
-use std::ops::Add;
 use std::str;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -119,15 +118,7 @@ fn replication_loop(rx: Receiver<ReplicationMessage>) {
                         .iter_mut()
                         .map(|stream| {
                             scope.spawn(|| {
-                                println!(
-                                    "======== gonna send getack command, peer: {}",
-                                    stream.peer_addr().unwrap()
-                                );
                                 stream.write_all(cmd)?;
-                                println!(
-                                    "======== finish send getack command, peer: {}",
-                                    stream.peer_addr().unwrap()
-                                );
                                 stream.set_read_timeout(Some(timeout))?;
                                 read_ack_resp(stream)
                             })
@@ -142,21 +133,15 @@ fn replication_loop(rx: Receiver<ReplicationMessage>) {
                                 }
                             }
                             Ok(Err(e)) => {
-                                println!("============= error in handle join: {}", e);
+                                eprintln!("error in handle join: {}", e);
                             }
-                            _ => {}
+                            _ => {} // TODO: handle this error?
                         }
                     }
                 });
-                println!(
-                    "========replicas: {}, replica_count {} after the checking all replicas",
-                    replicas.len(),
-                    replica_count
-                );
                 current_offset += cmd.len();
 
                 let _ = response.send(replica_count);
-                println!("============ gonna exit wait branch, drop response");
             }
         }
     }
@@ -204,11 +189,6 @@ pub fn readline_exact(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
     let mut byte = [0u8; 1];
     loop {
         if let Err(e) = stream.read_exact(&mut byte) {
-            println!(
-                "============ ******* e reading 1 byte: {}, peer: {}",
-                e,
-                stream.peer_addr().unwrap()
-            );
             return Err(e);
         };
         if byte[0] == b'\n' {
@@ -374,7 +354,6 @@ impl Handler {
             let is_write = is_write_command(&command); // USE OPTION for encoded and eliminate is_write
             let encoded = encode_command(&command);
             let cmd_log = command.clone();
-            println!("=============== gonna handle command: {:?}", command);
             if let Err(e) = self.handle_command(&mut stream, command) {
                 eprintln!("handle command: io error: {:?}, command: {:?}", e, cmd_log);
                 return Next::Done;
@@ -978,10 +957,6 @@ impl Handler {
         write!(stream, "+FULLRESYNC {} 0\r\n", master_info.master_replid)?;
         write!(stream, "${}\r\n", rdb_data.len())?;
         stream.write_all(&rdb_data)?;
-        println!(
-            "=================== gonna add replica: {}",
-            stream.peer_addr().unwrap()
-        );
         let tx = master.replication_tx.clone();
         let _ = tx.send(ReplicationMessage::AddReplica(stream));
 
@@ -1005,23 +980,15 @@ impl Handler {
             return Err(io::Error::other("WAIT called from non-master"));
         };
         let (tx, rx) = channel::<usize>();
-        println!("============== gonna send wait message");
-        let res = master.replication_tx.send(ReplicationMessage::Wait {
+        let _ = master.replication_tx.send(ReplicationMessage::Wait {
             num_replicas,
             timeout,
             response: tx,
         });
-        println!("============== send wait msg result: {:?}", res);
-        if let Err(e) = res {
-            println!("==================== send wait msg error: {:}", e);
-        }
         // TODO: is this error ok?
-        println!("================ gonna receive from response channel");
         let replica_count = rx
             .recv()
             .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("receive error: {}", e)))?;
-        println!("================ DONE receive from response channel");
-        println!("============== replica count {}", replica_count);
         // let replica_count = master.replica_count.load(Ordering::Acquire);
         write!(stream, ":{}\r\n", replica_count)
     }
