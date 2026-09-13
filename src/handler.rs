@@ -117,7 +117,10 @@ fn replication_loop(rx: Receiver<ReplicationMessage>) {
                             stream.peer_addr().unwrap()
                         );
                         if stream.write_all(cmd).is_err() {
-                            println!("========== stream write_all failed");
+                            println!(
+                                "========== stream write_all failed, peer: {}",
+                                stream.peer_addr().unwrap()
+                            );
                             return;
                         };
                         let Ok(offset) = read_ack_resp(stream) else {
