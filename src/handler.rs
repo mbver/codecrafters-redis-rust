@@ -49,7 +49,6 @@ enum ReplicationMessage {
     AddReplica(TcpStream),
     Command(Vec<u8>),
     Wait {
-        num_replicas: usize,
         timeout: Duration,
         response: Sender<usize>,
     },
@@ -100,11 +99,7 @@ fn replication_loop(rx: Receiver<ReplicationMessage>) {
                 current_offset += data.len();
                 replicas.retain_mut(|stream| stream.write_all(&data).is_ok());
             }
-            ReplicationMessage::Wait {
-                num_replicas,
-                timeout,
-                response,
-            } => {
+            ReplicationMessage::Wait { timeout, response } => {
                 if current_offset == 0 {
                     let _ = response.send(replicas.len());
                     continue;
@@ -969,9 +964,9 @@ impl Handler {
         num_replicas: &str,
         timeout: &str,
     ) -> io::Result<()> {
-        let num_replicas = num_replicas
+        let _ = num_replicas
             .parse::<usize>()
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?; // num_replicas isn't used yet
         let timeout = timeout
             .parse::<u64>()
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
@@ -981,7 +976,6 @@ impl Handler {
         };
         let (tx, rx) = channel::<usize>();
         let _ = master.replication_tx.send(ReplicationMessage::Wait {
-            num_replicas,
             timeout,
             response: tx,
         });
