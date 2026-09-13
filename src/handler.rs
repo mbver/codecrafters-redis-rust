@@ -196,9 +196,11 @@ pub fn readline_exact(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
 pub fn parse_bulk_len(line: &[u8]) -> io::Result<usize> {
     let s = std::str::from_utf8(line)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid utf8"))?;
+    println!("====== parse bulk length: 1");
     let s = s
         .strip_prefix('$')
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing $"))?;
+    println!("====== parse bulk length: 2");
     s.parse::<usize>()
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid length"))
 }
