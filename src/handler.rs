@@ -123,6 +123,10 @@ fn replication_loop(rx: Receiver<ReplicationMessage>) {
                             );
                             return;
                         };
+                        println!(
+                            "======== finish send getack command, peer: {}",
+                            stream.peer_addr().unwrap()
+                        );
                         let Ok(offset) = read_ack_resp(stream) else {
                             println!(
                                 "=========== read_ack_resp failed, peer: {}",
