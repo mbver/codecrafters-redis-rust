@@ -128,6 +128,11 @@ fn replication_loop(rx: Receiver<ReplicationMessage>) {
                         println!("======== replica_count now: {}", replica_count);
                         true
                     });
+                    println!(
+                        "========replicas: {}, replica_count {} after retain_mut",
+                        replicas.len(),
+                        replica_count
+                    );
                     current_offset += cmd.len();
                     if replica_count >= num_replicas || Instant::now() > deadline {
                         break;
