@@ -124,7 +124,10 @@ fn replication_loop(rx: Receiver<ReplicationMessage>) {
                             return;
                         };
                         let Ok(offset) = read_ack_resp(stream) else {
-                            println!("=========== read_ack_resp failed");
+                            println!(
+                                "=========== read_ack_resp failed, peer: {}",
+                                stream.peer_addr().unwrap()
+                            );
                             return;
                         };
                         println!("====== offset: {}, current: {}", offset, current_offset);
