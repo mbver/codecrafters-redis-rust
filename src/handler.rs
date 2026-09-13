@@ -1014,7 +1014,7 @@ impl Handler {
         println!("================ gonna receive from response channel");
         let replica_count = rx
             .recv()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("receive error: {}", e)))?;
         println!("================ DONE receive from response channel");
         println!("============== replica count {}", replica_count);
         // let replica_count = master.replica_count.load(Ordering::Acquire);
