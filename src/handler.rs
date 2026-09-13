@@ -1013,7 +1013,7 @@ impl Handler {
         });
         println!("============== send wait msg result: {:?}", res);
         if let Err(e) = res {
-            println!("==================== send wait msg error: {:?}", e);
+            println!("==================== send wait msg error: {}", e);
         }
         // TODO: is this error ok?
         println!("================ gonna receive from response channel");
