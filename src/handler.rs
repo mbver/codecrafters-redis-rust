@@ -210,7 +210,11 @@ pub fn readline_exact(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
     let mut byte = [0u8; 1];
     loop {
         if let Err(e) = stream.read_exact(&mut byte) {
-            println!("============ ******* e reading 1 byte: {}", e);
+            println!(
+                "============ ******* e reading 1 byte: {}, peer: {}",
+                e,
+                stream.peer_addr().unwrap()
+            );
             return Err(e);
         };
         if byte[0] == b'\n' {
