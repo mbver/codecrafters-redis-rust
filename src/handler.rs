@@ -156,6 +156,7 @@ fn replication_loop(rx: Receiver<ReplicationMessage>) {
                 current_offset += cmd.len();
 
                 let _ = response.send(replica_count);
+                println!("============ gonna exit wait branch, drop response");
             }
         }
     }
