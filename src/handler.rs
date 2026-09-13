@@ -1011,9 +1011,11 @@ impl Handler {
             response: tx,
         });
         // TODO: is this error ok?
+        println!("================ gonna receive from response channel");
         let replica_count = rx
             .recv()
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        println!("================ DONE receive from response channel");
         println!("============== replica count {}", replica_count);
         // let replica_count = master.replica_count.load(Ordering::Acquire);
         write!(stream, ":{}\r\n", replica_count)
