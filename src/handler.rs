@@ -108,7 +108,7 @@ fn replication_loop(rx: Receiver<ReplicationMessage>) {
             } => {
                 if current_offset == 0 {
                     let _ = response.send(replicas.len());
-                    return;
+                    continue;
                 }
                 let cmd = b"*3\r\n$8\r\nREPLCONF\r\n$6\r\nGETACK\r\n$1\r\n*\r\n";
                 // let deadline = Instant::now().add(timeout);
@@ -1013,7 +1013,7 @@ impl Handler {
         });
         println!("============== send wait msg result: {:?}", res);
         if let Err(e) = res {
-            println!("==================== send wait msg error: {}", e);
+            println!("==================== send wait msg error: {:}", e);
         }
         // TODO: is this error ok?
         println!("================ gonna receive from response channel");
