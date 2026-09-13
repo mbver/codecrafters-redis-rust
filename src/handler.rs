@@ -107,54 +107,50 @@ fn replication_loop(rx: Receiver<ReplicationMessage>) {
                 response,
             } => {
                 let cmd = b"*3\r\n$8\r\nREPLCONF\r\n$6\r\nGETACK\r\n$1\r\n*\r\n";
-                let deadline = Instant::now().add(timeout);
+                // let deadline = Instant::now().add(timeout);
 
                 let mut replica_count: usize; // number of replicas caught up
-                loop {
-                    replica_count = 0;
-                    std::thread::scope(|scope| {
-                        let handles: Vec<_> = replicas
-                            .iter_mut()
-                            .map(|stream| {
-                                scope.spawn(|| {
-                                    println!(
-                                        "======== gonna send getack command, peer: {}",
-                                        stream.peer_addr().unwrap()
-                                    );
-                                    stream.write_all(cmd)?;
-                                    println!(
-                                        "======== finish send getack command, peer: {}",
-                                        stream.peer_addr().unwrap()
-                                    );
-                                    read_ack_resp(stream)
-                                })
+                replica_count = 0;
+                std::thread::scope(|scope| {
+                    let handles: Vec<_> = replicas
+                        .iter_mut()
+                        .map(|stream| {
+                            scope.spawn(|| {
+                                println!(
+                                    "======== gonna send getack command, peer: {}",
+                                    stream.peer_addr().unwrap()
+                                );
+                                stream.write_all(cmd)?;
+                                println!(
+                                    "======== finish send getack command, peer: {}",
+                                    stream.peer_addr().unwrap()
+                                );
+                                read_ack_resp(stream)
                             })
-                            .collect();
+                        })
+                        .collect();
 
-                        for handle in handles {
-                            match handle.join() {
-                                Ok(Ok(offset)) => {
-                                    if offset >= current_offset {
-                                        replica_count += 1;
-                                    }
+                    for handle in handles {
+                        match handle.join() {
+                            Ok(Ok(offset)) => {
+                                if offset >= current_offset {
+                                    replica_count += 1;
                                 }
-                                Ok(Err(e)) => {
-                                    println!("============= error in handle join: {}", e);
-                                }
-                                _ => {}
                             }
+                            Ok(Err(e)) => {
+                                println!("============= error in handle join: {}", e);
+                            }
+                            _ => {}
                         }
-                    });
-                    println!(
-                        "========replicas: {}, replica_count {} after the checking all replicas",
-                        replicas.len(),
-                        replica_count
-                    );
-                    current_offset += cmd.len();
-                    if replica_count >= num_replicas || Instant::now() > deadline {
-                        break;
                     }
-                }
+                });
+                println!(
+                    "========replicas: {}, replica_count {} after the checking all replicas",
+                    replicas.len(),
+                    replica_count
+                );
+                current_offset += cmd.len();
+
                 let _ = response.send(replica_count);
             }
         }
