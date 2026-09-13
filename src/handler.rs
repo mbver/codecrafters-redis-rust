@@ -207,6 +207,7 @@ pub fn readline_exact(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
             }
             return Ok(line);
         }
+        println!("=========== read: {}", byte[0] as char);
         line.push(byte[0])
     }
 }
