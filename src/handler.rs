@@ -1006,11 +1006,12 @@ impl Handler {
         };
         let (tx, rx) = channel::<usize>();
         println!("============== gonna send wait message");
-        let _ = master.replication_tx.send(ReplicationMessage::Wait {
+        let res = master.replication_tx.send(ReplicationMessage::Wait {
             num_replicas,
             timeout,
             response: tx,
         });
+        println!("============== send wait msg result: {:?}", res);
         // TODO: is this error ok?
         println!("================ gonna receive from response channel");
         let replica_count = rx
