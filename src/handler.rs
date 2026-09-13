@@ -976,7 +976,10 @@ impl Handler {
         write!(stream, "+FULLRESYNC {} 0\r\n", master_info.master_replid)?;
         write!(stream, "${}\r\n", rdb_data.len())?;
         stream.write_all(&rdb_data)?;
-
+        println!(
+            "=================== gonna add replica: {}",
+            stream.peer_addr().unwrap()
+        );
         let tx = master.replication_tx.clone();
         let _ = tx.send(ReplicationMessage::AddReplica(stream));
 
