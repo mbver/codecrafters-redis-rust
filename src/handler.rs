@@ -175,7 +175,10 @@ fn read_ack_resp(stream: &mut TcpStream) -> io::Result<usize> {
         return Err(Error::new(io::ErrorKind::InvalidData, "crlf missing"));
     }
     println!("======== 7");
-    parse_bulk_len(&buf[..len])
+    let s = std::str::from_utf8(&buf[..len])
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid utf8"))?;
+    s.parse::<usize>()
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid length"))
 }
 
 pub fn readline_exact(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
