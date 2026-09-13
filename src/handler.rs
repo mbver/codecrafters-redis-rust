@@ -200,7 +200,10 @@ pub fn readline_exact(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
     let mut line: Vec<u8> = Vec::new();
     let mut byte = [0u8; 1];
     loop {
-        stream.read_exact(&mut byte)?;
+        if let Err(e) = stream.read_exact(&mut byte) {
+            println!("============ e reading 1 byte: {}", e);
+            return Err(e);
+        };
         if byte[0] == b'\n' {
             if line.last() == Some(&b'\r') {
                 line.pop();
