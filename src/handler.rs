@@ -111,13 +111,14 @@ fn replication_loop(rx: Receiver<ReplicationMessage>) {
                 let mut replica_count; // number of replicas caught up
                 loop {
                     replica_count = 0;
-                    println!("=============== replicas length: {}", replicas.len());
                     replicas.retain_mut(|stream| {
                         println!("======== gonna send getack command");
                         if stream.write_all(cmd).is_err() {
+                            println!("========== stream write_all failed");
                             return false;
                         };
                         let Ok(offset) = read_ack_resp(stream) else {
+                            println!("=========== read_ack_resp failed");
                             return false;
                         };
                         println!("====== offset: {}, current: {}", offset, current_offset);
