@@ -962,6 +962,7 @@ impl Handler {
             return Err(io::Error::other("WAIT called from non-master"));
         };
         let (tx, rx) = channel::<usize>();
+        println!("============== gonna send wait message");
         let _ = master.replication_tx.send(ReplicationMessage::Wait {
             num_replicas,
             timeout,
@@ -971,6 +972,7 @@ impl Handler {
         let replica_count = rx
             .recv()
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        println!("============== replica count {}", replica_count);
         // let replica_count = master.replica_count.load(Ordering::Acquire);
         write!(stream, ":{}\r\n", replica_count)
     }
