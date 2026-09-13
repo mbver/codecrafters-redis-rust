@@ -372,8 +372,9 @@ impl Handler {
             }
             let is_write = is_write_command(&command); // USE OPTION for encoded and eliminate is_write
             let encoded = encode_command(&command);
+            println!("=============== gonna handle command: {:?}", command);
             if let Err(e) = self.handle_command(&mut stream, command) {
-                eprintln!("io error: {:?}", e);
+                eprintln!("handle command: io error: {:?}", e);
                 return Next::Done;
             }
             if is_write {
