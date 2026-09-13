@@ -143,24 +143,30 @@ fn read_ack_resp(stream: &mut TcpStream) -> io::Result<usize> {
     if header != b"*3" {
         return Err(Error::new(io::ErrorKind::InvalidData, "invalid header"));
     }
+    println!("========= header pass");
     let len = readline_exact(stream)?;
     if len != b"$8" {
         return Err(Error::new(io::ErrorKind::InvalidData, "invalid header"));
     }
+    println!("======== len pass");
     let mut buf = vec![0u8; 10];
     stream.read_exact(&mut buf)?;
     if buf != b"REPLCONF\r\n" {
         return Err(Error::new(io::ErrorKind::InvalidData, "invalid command"));
     }
+    println!("======== replconf pass");
     let len = readline_exact(stream)?;
     if len != b"$3" {
         return Err(Error::new(io::ErrorKind::InvalidData, "invalid header"));
     }
+    println!("======== 5");
+
     let mut buf = vec![0u8; 5];
     stream.read_exact(&mut buf)?;
     if buf != b"ACK\r\n" {
         return Err(Error::new(io::ErrorKind::InvalidData, "invalid command"));
     }
+    println!("======== 6");
     let len = readline_exact(stream)?;
     let len = parse_bulk_len(&len)?;
     let mut buf = vec![0u8; len + 2];
@@ -168,6 +174,7 @@ fn read_ack_resp(stream: &mut TcpStream) -> io::Result<usize> {
     if &buf[len..] != b"\r\n" {
         return Err(Error::new(io::ErrorKind::InvalidData, "crlf missing"));
     }
+    println!("======== 7");
     parse_bulk_len(&buf[..len])
 }
 
