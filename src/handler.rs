@@ -163,34 +163,28 @@ fn replication_loop(rx: Receiver<ReplicationMessage>) {
 
 fn read_ack_resp(stream: &mut TcpStream) -> io::Result<usize> {
     let header = readline_exact(stream)?;
-    println!("====== header read {}", String::from_utf8_lossy(&header));
     if header != b"*3" {
         return Err(Error::new(io::ErrorKind::InvalidData, "invalid header"));
     }
-    println!("========= header pass");
     let len = readline_exact(stream)?;
     if len != b"$8" {
         return Err(Error::new(io::ErrorKind::InvalidData, "invalid header"));
     }
-    println!("======== len pass");
     let mut buf = vec![0u8; 10];
     stream.read_exact(&mut buf)?;
     if buf != b"REPLCONF\r\n" {
         return Err(Error::new(io::ErrorKind::InvalidData, "invalid command"));
     }
-    println!("======== replconf pass");
     let len = readline_exact(stream)?;
     if len != b"$3" {
         return Err(Error::new(io::ErrorKind::InvalidData, "invalid header"));
     }
-    println!("======== 5");
 
     let mut buf = vec![0u8; 5];
     stream.read_exact(&mut buf)?;
     if buf != b"ACK\r\n" {
         return Err(Error::new(io::ErrorKind::InvalidData, "invalid command"));
     }
-    println!("======== 6");
     let len = readline_exact(stream)?;
     let len = parse_bulk_len(&len)?;
     let mut buf = vec![0u8; len + 2];
@@ -198,7 +192,6 @@ fn read_ack_resp(stream: &mut TcpStream) -> io::Result<usize> {
     if &buf[len..] != b"\r\n" {
         return Err(Error::new(io::ErrorKind::InvalidData, "crlf missing"));
     }
-    println!("======== 7");
     let s = std::str::from_utf8(&buf[..len])
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid utf8"))?;
     s.parse::<usize>()
