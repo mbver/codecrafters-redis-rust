@@ -112,7 +112,10 @@ fn replication_loop(rx: Receiver<ReplicationMessage>) {
                 loop {
                     replica_count = 0;
                     replicas.iter_mut().for_each(|stream| {
-                        println!("======== gonna send getack command");
+                        println!(
+                            "======== gonna send getack command, peer: {}",
+                            stream.peer_addr().unwrap()
+                        );
                         if stream.write_all(cmd).is_err() {
                             println!("========== stream write_all failed");
                             return;
