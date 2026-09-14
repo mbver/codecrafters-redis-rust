@@ -1,14 +1,19 @@
 use std::env;
 
+#[derive(Clone)]
 pub struct Config {
     pub port: u16,
     pub replica_of: Option<(String, u16)>,
+    pub dir: Option<String>,
+    pub rdb_filename: Option<String>,
 }
 
 pub fn parse_args() -> Config {
     let mut config = Config {
         port: 6379,
         replica_of: None,
+        dir: None,
+        rdb_filename: None,
     };
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -30,6 +35,14 @@ pub fn parse_args() -> Config {
                     .parse::<u16>()
                     .expect("invalid port");
                 config.replica_of = Some((host, port));
+            }
+            "--dir" => {
+                let dir = args.next().expect("missing rdb dir");
+                config.dir = Some(dir);
+            }
+            "--dbfilename" => {
+                let rdb_filename = args.next().expect("missing rdb filename");
+                config.rdb_filename = Some(rdb_filename);
             }
             _ => {
                 eprintln!("unknown argument");

@@ -12,6 +12,7 @@ use std::{
 
 use std::fmt::Write as FmtWrite;
 
+use crate::config::Config;
 use crate::fatal;
 use crate::parser::{Command, Parser};
 use crate::redis::{EntryId, Redis, RedisError, StreamEntry, Value};
@@ -263,6 +264,7 @@ pub struct Handler {
     redis: SharedRedis,
     transaction: Option<Transaction>,
     watch_list: HashMap<String, u64>,
+    config: Config,
 }
 
 fn is_write_command(command: &[String]) -> bool {
@@ -320,12 +322,13 @@ where
 }
 
 impl Handler {
-    pub fn new(role: Role, redis: SharedRedis) -> Self {
+    pub fn new(role: Role, redis: SharedRedis, config: Config) -> Self {
         Self {
             role,
-            redis: redis,
+            redis,
             transaction: None,
             watch_list: HashMap::new(),
+            config,
         }
     }
     pub fn handle(&mut self, stream: TcpStream) {
@@ -486,6 +489,11 @@ impl Handler {
             [cmd, ..] if cmd.eq_ignore_ascii_case("REPLCONF") => self.handle_replconf(stream),
             [cmd, num_replicas, timeout] if cmd.eq_ignore_ascii_case("WAIT") => {
                 self.handle_wait(stream, num_replicas, timeout)
+            }
+            [cmd, subcmd, arg]
+                if cmd.eq_ignore_ascii_case("CONFIG") && subcmd.eq_ignore_ascii_case("GET") =>
+            {
+                self.handle_config_get(stream, arg)
             }
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
@@ -982,6 +990,26 @@ impl Handler {
             .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("receive error: {}", e)))?;
         // let replica_count = master.replica_count.load(Ordering::Acquire);
         write!(stream, ":{}\r\n", replica_count)
+    }
+
+    fn handle_config_get(&mut self, stream: &mut TcpStream, arg: &String) -> io::Result<()> {
+        match arg.as_str() {
+            "dir" => {
+                let dir = self.config.dir.as_deref().unwrap_or("");
+                write!(stream, "*2\r\n$3\r\ndir\r\n${}\r\n{}\r\n", dir.len(), dir)?;
+            }
+            "dbfilename" => {
+                let dbfilename = self.config.rdb_filename.as_deref().unwrap_or("");
+                write!(
+                    stream,
+                    "*2\r\n$3\r\ndir\r\n${}\r\n{}\r\n",
+                    dbfilename.len(),
+                    dbfilename
+                )?;
+            }
+            _ => {}
+        }
+        Ok(())
     }
 }
 

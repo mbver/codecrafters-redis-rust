@@ -11,7 +11,7 @@ mod handler;
 
 mod config;
 
-use crate::config::parse_args;
+use crate::config::{Config, parse_args};
 use crate::handler::{
     Handler, MasterState, RedisShared, Role, SlaveInfo, parse_bulk_len, readline_exact,
 };
@@ -22,7 +22,7 @@ fn main() {
     let listener = TcpListener::bind(format!("127.0.0.1:{}", config.port)).unwrap();
     let role = match &config.replica_of {
         Some((host, port)) => {
-            start_replica(host, *port, config.port, redis.clone());
+            start_replica(host, *port, config.port, redis.clone(), config.clone());
             Role::Slave(SlaveInfo { offset: 0 }) // TODO: slave info only applied in replication loop? it shouldn't be in main-loop? or replica shouldn't be in main-loop altogether?
         }
         None => Role::Master(Arc::new(MasterState::new())),
@@ -30,7 +30,7 @@ fn main() {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                let mut client = Handler::new(role.clone(), redis.clone());
+                let mut client = Handler::new(role.clone(), redis.clone(), config.clone());
                 std::thread::spawn(move || {
                     client.handle(stream);
                 });
@@ -47,7 +47,7 @@ fn fatal(msg: &str) -> ! {
     process::exit(1)
 }
 
-fn start_replica(host: &str, port: u16, my_port: u16, redis: Arc<RedisShared>) {
+fn start_replica(host: &str, port: u16, my_port: u16, redis: Arc<RedisShared>, config: Config) {
     let Ok(Some(mut stream)) = ping(host, port) else {
         fatal("ping failed");
     };
@@ -57,7 +57,7 @@ fn start_replica(host: &str, port: u16, my_port: u16, redis: Arc<RedisShared>) {
     if send_psync(&mut stream, None, -1).is_err() {
         fatal("psync failed");
     }
-    let mut client = Handler::new(Role::Slave(SlaveInfo { offset: 0 }), redis);
+    let mut client = Handler::new(Role::Slave(SlaveInfo { offset: 0 }), redis, config);
     std::thread::spawn(move || {
         client.handle_replication(stream);
     });
