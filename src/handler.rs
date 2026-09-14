@@ -1015,7 +1015,7 @@ impl Handler {
         Ok(())
     }
     fn handle_get_all_keys(&mut self, stream: &mut TcpStream) -> io::Result<()> {
-        stream.write_all(b"*1\r\n$3\r\nraspberry\r\n")
+        stream.write_all(b"*1\r\n$9\r\nraspberry\r\n")
     }
 }
 
