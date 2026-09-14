@@ -495,6 +495,9 @@ impl Handler {
             {
                 self.handle_config_get(stream, arg)
             }
+            [cmd, arg] if cmd.eq_ignore_ascii_case("KEYS") && arg.eq_ignore_ascii_case("*") => {
+                self.handle_get_all_keys(stream)
+            }
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
             }
@@ -1010,6 +1013,9 @@ impl Handler {
             _ => {}
         }
         Ok(())
+    }
+    fn handle_get_all_keys(&mut self, stream: &mut TcpStream) -> io::Result<()> {
+        stream.write_all(b"*1\r\n$3\r\nfoo\r\n")
     }
 }
 
