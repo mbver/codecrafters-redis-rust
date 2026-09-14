@@ -138,6 +138,7 @@ fn replication_loop(rx: Receiver<ReplicationMessage>) {
     }
 }
 
+// TODO: this fit perfectly with command parser, find a way to use the parser
 fn read_ack_resp(stream: &mut TcpStream) -> io::Result<usize> {
     let header = readline_exact(stream)?;
     if header != b"*3" {

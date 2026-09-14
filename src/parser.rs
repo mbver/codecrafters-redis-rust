@@ -25,6 +25,8 @@ pub struct Command {
     pub num_bytes: usize, // number of bytes consumed by parser
 }
 
+// TODO: find a way to merge Parser and ReadLoop. Have some method like try_next?
+// Parser might need to wrap the stream. and we will need to expose the stream for other methods
 impl Parser {
     pub fn new() -> Self {
         Parser {

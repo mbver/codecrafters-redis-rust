@@ -112,6 +112,6 @@ fn send_psync(stream: &mut TcpStream, _: Option<String>, _: i64) -> io::Result<(
     let line = readline_exact(stream)?;
     let data_len = parse_bulk_len(&line)?;
     let mut buf = vec![0u8; data_len];
-    let _ = stream.read_exact(&mut buf)?;
+    let _ = stream.read_exact(&mut buf)?; // TODO: the data isn't terminated with \r\n so we can't not use the command parser. find a way to use parser
     Ok(())
 }
