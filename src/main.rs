@@ -1,5 +1,6 @@
 use std::io::{self, Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::path::Path;
 use std::process;
 use std::sync::Arc;
 
@@ -11,6 +12,8 @@ mod handler;
 
 mod config;
 
+mod rdb;
+
 use crate::config::{Config, parse_args};
 use crate::handler::{
     Handler, MasterState, RedisShared, Role, SlaveInfo, parse_bulk_len, readline_exact,
@@ -19,6 +22,13 @@ fn main() {
     println!("Logs from your program will appear here!");
     let config = parse_args();
     let redis = Arc::new(RedisShared::new());
+    if let Some(dir) = &config.dir {
+        let Some(dbfile) = &config.rdb_filename else {
+            eprintln!("rdb_filename missing but dir provided");
+            return;
+        };
+        let path = Path::new(dir).join(dbfile);
+    }
     let listener = TcpListener::bind(format!("127.0.0.1:{}", config.port)).unwrap();
     let role = match &config.replica_of {
         Some((host, port)) => {

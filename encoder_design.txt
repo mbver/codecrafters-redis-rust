@@ -1,0 +1,53 @@
+- do we need to switch between states? seems not needed yet. just proceed from start to end
+
+- encoding:
+    - write header: rdb header (REDISOO11)
+        - crc is skipped for now
+    - write metadata:
+        - write 0xFA
+        - write_string key, write_string value
+
+- write_string
+    - skip write_int_string and write_compressed_string for now
+    - only write_simple_string:
+        - write_length(u64) first
+        - write []byte(s)
+
+- write_length: use variable length encoding
+    - <=maxUint6 => 00 + 6 bits => 1 byte
+    - <= maxUint14 => 01 + 14 bits => 2 bytes
+        - extract first byte: value >> 8 and then add 01 to the top 2 bits with OR len14BitMask
+        - extract the 2nd byte: byte(value)
+    - <= maxUint32 => 10000000 + 4 bytes => 5 bytes (the name len32Bit is misleading, it should be called tag32Bit)
+        - to decode use binary.BigEndian.Uint32. it needs a slice of at least 4-bytes
+    - <= maxUint64 => 10000001 + 8 bytes => 9 bytes (the name len64Bit is misleading, it should be called tag64Bit)
+        - to decode use binary.BigEndian.Uint64. it needs a slice of at least 8-bytes
+
+- write_db_header
+    - fe (for db)
+    - write_length(uint64(db_index))
+    - fb (hashtable size info)
+    - write_length(key_count)
+    - write_length(ttl_count)
+
+- a key-value pair has 3 fields:
+    - key
+    - value
+    - expiry_ts: in ms
+- key-value pair is written with write_string_object
+    - write type_string (0x00)
+    - write_string(key)
+    - write_string(value) => the conversion of value to []byte and back to string is so pointless, just use write_string on value directly
+- writing expiry_ts happens before write_string_object
+    - expiry_ts is in ms
+        - write FC
+        - write ts in uint64, little endian format
+            - decode with binary.LittleEndian.Uint64. gives it a slice of at least 8 bytes
+    - expiry_ts is in seconds (this isn't needed right now)
+        - write FD
+        - write ts in uint32, little endian format
+            - decode with binary.LittleEndian.Uint32, gives it a slice of at least 4 bytes
+
+- end section
+    - 0xff
+    - crc checksum
