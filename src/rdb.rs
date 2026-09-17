@@ -73,7 +73,7 @@ impl<R: Read> RdbReader<R> {
                 u64::from_be_bytes(buf)
             }
             _ => {
-                return Err(io_invalid_data("invalid length header"));
+                return Err(io_invalid_data(format!("invalid length header: {}", first)));
             }
         };
         Ok(value)
@@ -104,8 +104,9 @@ impl<R: Read> RdbReader<R> {
             }
             println!("===== opcode pass");
             let key = self.read_string()?;
+            println!("====== read key {}", key);
             let value = self.read_string()?;
-            println!("===== key, value {}, {}", key, value);
+            println!("===== read value {}", value);
             self.metadata.push((key, value));
         }
     }
