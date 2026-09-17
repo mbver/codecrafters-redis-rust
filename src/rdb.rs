@@ -25,7 +25,7 @@ impl<R: Read + Seek> RdbReader<R> {
         let mut buf = vec![];
         let _ = reader.read_to_end(&mut buf);
         for byte in buf {
-            print!("{byte:02x}");
+            print!("{byte:02x }");
         }
         println!("");
         let _ = reader.seek(SeekFrom::Start(0));
