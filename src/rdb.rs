@@ -12,8 +12,6 @@ const OP_DB_SIZE: u8 = 0xFB;
 const OP_STRING_TYPE: u8 = 0x00;
 const OP_EXPIRY_MS: u8 = 0xFC;
 const OP_EXPIRY_SEC: u8 = 0xFD;
-const TAG_UINT32: u8 = 0b10000000;
-const TAG_UINT64: u8 = 0b10000001;
 
 pub struct RdbReader<R: Read> {
     reader: BufReader<R>,
@@ -62,12 +60,12 @@ impl<R: Read> RdbReader<R> {
                 let second = self.read_u8()?;
                 ((first & 0x3f) as u64) << 8 | second as u64
             }
-            0b10 if first == TAG_UINT32 => {
+            0b10 => {
                 let mut buf = [0u8; 4];
                 self.reader.read_exact(&mut buf)?;
                 u32::from_be_bytes(buf) as u64
             }
-            0b10 if first == TAG_UINT64 => {
+            0b11 => {
                 let mut buf = [0u8; 8];
                 self.read_exact(&mut buf)?;
                 u64::from_be_bytes(buf)
