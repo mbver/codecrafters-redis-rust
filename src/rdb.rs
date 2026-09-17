@@ -1,5 +1,5 @@
 use std::{
-    io::{self, BufReader, Read},
+    io::{self, BufReader, Read, Seek, SeekFrom},
     time::{Duration, SystemTime},
 };
 
@@ -19,10 +19,18 @@ pub struct RdbReader<R: Read> {
     redis: Redis,
 }
 
-impl<R: Read> RdbReader<R> {
+impl<R: Read + Seek> RdbReader<R> {
     pub fn new(reader: R) -> Self {
+        let mut reader = BufReader::new(reader);
+        let mut buf = vec![];
+        let _ = reader.read_to_end(&mut buf);
+        for byte in buf {
+            print!("{byte:02x}");
+        }
+        println!("");
+        let _ = reader.seek(SeekFrom::Start(0));
         Self {
-            reader: BufReader::new(reader),
+            reader,
             metadata: Vec::new(),
             redis: Redis::new(),
         }
@@ -88,6 +96,7 @@ impl<R: Read> RdbReader<R> {
     }
     fn read_string(&mut self) -> io::Result<String> {
         let len = self.read_length()? as usize;
+        println!("===== length is: {}", len);
         let mut buf = vec![0u8; len];
         self.read_exact(&mut buf)?;
         String::from_utf8(buf).map_err(|e| io_invalid_data(e))
