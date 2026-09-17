@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::fmt::Display;
-use std::io::{self, Error};
+use std::io;
 use std::str;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::{Duration, Instant};
+use std::time::{Duration, SystemTime};
 use std::{
     io::{Read, Write},
     net::TcpStream,
@@ -14,6 +14,7 @@ use std::fmt::Write as FmtWrite;
 
 use crate::config::Config;
 use crate::fatal;
+use crate::helper::io_invalid_data;
 use crate::parser::{Command, Parser};
 use crate::redis::{EntryId, Redis, RedisError, StreamEntry, Value};
 
@@ -25,6 +26,11 @@ impl RedisShared {
     pub fn new() -> Self {
         Self {
             redis: Mutex::new(Redis::new()),
+        }
+    }
+    pub fn with_db(db: Redis) -> Self {
+        Self {
+            redis: Mutex::new(db),
         }
     }
     fn lock(&self) -> MutexGuard<'_, Redis> {
@@ -143,38 +149,37 @@ fn replication_loop(rx: Receiver<ReplicationMessage>) {
 fn read_ack_resp(stream: &mut TcpStream) -> io::Result<usize> {
     let header = readline_exact(stream)?;
     if header != b"*3" {
-        return Err(Error::new(io::ErrorKind::InvalidData, "invalid header"));
+        return Err(io_invalid_data("invalid header"));
     }
     let len = readline_exact(stream)?;
     if len != b"$8" {
-        return Err(Error::new(io::ErrorKind::InvalidData, "invalid header"));
+        return Err(io_invalid_data("invalid header"));
     }
     let mut buf = vec![0u8; 10];
     stream.read_exact(&mut buf)?;
     if buf != b"REPLCONF\r\n" {
-        return Err(Error::new(io::ErrorKind::InvalidData, "invalid command"));
+        return Err(io_invalid_data("expect replconf command"));
     }
     let len = readline_exact(stream)?;
     if len != b"$3" {
-        return Err(Error::new(io::ErrorKind::InvalidData, "invalid header"));
+        return Err(io_invalid_data("expect length of 3"));
     }
 
     let mut buf = vec![0u8; 5];
     stream.read_exact(&mut buf)?;
     if buf != b"ACK\r\n" {
-        return Err(Error::new(io::ErrorKind::InvalidData, "invalid command"));
+        return Err(io_invalid_data("expect ack"));
     }
     let len = readline_exact(stream)?;
     let len = parse_bulk_len(&len)?;
     let mut buf = vec![0u8; len + 2];
     stream.read_exact(&mut buf)?;
     if &buf[len..] != b"\r\n" {
-        return Err(Error::new(io::ErrorKind::InvalidData, "crlf missing"));
+        return Err(io_invalid_data("crlf missing"));
     }
-    let s = std::str::from_utf8(&buf[..len])
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid utf8"))?;
+    let s = std::str::from_utf8(&buf[..len]).map_err(|_| io_invalid_data("invalid utf8"))?;
     s.parse::<usize>()
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid length"))
+        .map_err(|_| io_invalid_data("invalid length"))
 }
 
 pub fn readline_exact(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
@@ -195,13 +200,12 @@ pub fn readline_exact(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
 }
 
 pub fn parse_bulk_len(line: &[u8]) -> io::Result<usize> {
-    let s = std::str::from_utf8(line)
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid utf8"))?;
+    let s = std::str::from_utf8(line).map_err(|_| io_invalid_data("invalid utf8"))?;
     let s = s
         .strip_prefix('$')
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing $"))?;
+        .ok_or_else(|| io_invalid_data("missing $"))?;
     s.parse::<usize>()
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid length"))
+        .map_err(|_| io_invalid_data("invalid usize"))
 }
 
 #[derive(Clone)]
@@ -512,10 +516,10 @@ impl Handler {
         let deadline = match args {
             [] => None,
             [cmd, seconds] if cmd.eq_ignore_ascii_case("EX") => {
-                Some(Instant::now() + Duration::from_secs(seconds.parse().unwrap()))
+                Some(SystemTime::now() + Duration::from_secs(seconds.parse().unwrap()))
             }
             [cmd, milliseconds] if cmd.eq_ignore_ascii_case("PX") => {
-                Some(Instant::now() + Duration::from_millis(milliseconds.parse().unwrap()))
+                Some(SystemTime::now() + Duration::from_millis(milliseconds.parse().unwrap()))
             }
             _ => {
                 eprintln!("invalid argument: {:?}", args);
@@ -974,10 +978,8 @@ impl Handler {
     ) -> io::Result<()> {
         let _ = num_replicas
             .parse::<usize>()
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?; // num_replicas isn't used yet
-        let timeout = timeout
-            .parse::<u64>()
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+            .map_err(|e| io_invalid_data(e))?; // num_replicas isn't used yet
+        let timeout = timeout.parse::<u64>().map_err(|e| io_invalid_data(e))?;
         let timeout = Duration::from_millis(timeout);
         let Role::Master(master) = &self.role else {
             return Err(io::Error::other("WAIT called from non-master"));

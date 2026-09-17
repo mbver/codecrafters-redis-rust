@@ -1,3 +1,4 @@
+use std::fs::File;
 use std::io::{self, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
@@ -14,21 +15,24 @@ mod config;
 
 mod rdb;
 
+mod helper;
+
 use crate::config::{Config, parse_args};
 use crate::handler::{
     Handler, MasterState, RedisShared, Role, SlaveInfo, parse_bulk_len, readline_exact,
 };
+use crate::helper::io_invalid_data;
+use crate::rdb::RdbReader;
 fn main() {
     println!("Logs from your program will appear here!");
     let config = parse_args();
-    let redis = Arc::new(RedisShared::new());
-    if let Some(dir) = &config.dir {
-        let Some(dbfile) = &config.rdb_filename else {
-            eprintln!("rdb_filename missing but dir provided");
+    let redis = match load_db(&config) {
+        Ok(redis) => redis,
+        Err(e) => {
+            eprintln!("error loading db: {e}");
             return;
-        };
-        let path = Path::new(dir).join(dbfile);
-    }
+        }
+    };
     let listener = TcpListener::bind(format!("127.0.0.1:{}", config.port)).unwrap();
     let role = match &config.replica_of {
         Some((host, port)) => {
@@ -95,10 +99,7 @@ fn send_replconf(stream: &mut TcpStream, port: u16) -> io::Result<()> {
     let mut buf = [0; 512];
     let n = stream.read(&mut buf)?; // TODO: change to read_exact
     if &buf[..n] != b"+OK\r\n" {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "invalid replconf result",
-        ));
+        return Err(io_invalid_data("invalid replconf result"));
     }
 
     write!(
@@ -108,10 +109,7 @@ fn send_replconf(stream: &mut TcpStream, port: u16) -> io::Result<()> {
 
     let n = stream.read(&mut buf)?;
     if &buf[..n] != b"+OK\r\n" {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "invalid replconf result",
-        ));
+        return Err(io_invalid_data("invalid replconf result"));
     }
     Ok(())
 }
@@ -124,4 +122,20 @@ fn send_psync(stream: &mut TcpStream, _: Option<String>, _: i64) -> io::Result<(
     let mut buf = vec![0u8; data_len];
     let _ = stream.read_exact(&mut buf)?; // TODO: the data isn't terminated with \r\n so we can't not use the command parser. find a way to use parser
     Ok(())
+}
+
+fn load_db(config: &Config) -> io::Result<Arc<RedisShared>> {
+    let Some(dir) = &config.dir else {
+        return Ok(Arc::new(RedisShared::new()));
+    };
+
+    let Some(dbfile) = &config.rdb_filename else {
+        return Err(io_invalid_data("missing dbfile"));
+    };
+    let path = Path::new(dir).join(dbfile);
+    let file = File::open(path)?;
+    let mut rdb_reader = RdbReader::new(file);
+    rdb_reader.load()?;
+    let db = rdb_reader.into_db();
+    Ok(Arc::new(RedisShared::with_db(db)))
 }

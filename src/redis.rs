@@ -4,7 +4,7 @@ use std::{
     io::{self, Write},
     str::FromStr,
     sync::{Arc, Condvar},
-    time::{Instant, SystemTime, UNIX_EPOCH},
+    time::{SystemTime, UNIX_EPOCH},
     u64,
 };
 
@@ -186,7 +186,7 @@ pub enum Value {
 pub struct Redis {
     store: HashMap<String, Value>,
     versions: HashMap<String, u64>,
-    expire: HashMap<String, Instant>,
+    expire: HashMap<String, SystemTime>,
     waiters: HashMap<String, Arc<Condvar>>,
 }
 
@@ -206,7 +206,7 @@ impl Redis {
     pub fn get_version(&self, key: &str) -> u64 {
         self.versions.get(key).copied().unwrap_or(0)
     }
-    pub fn set(&mut self, key: String, value: String, deadline: Option<Instant>) {
+    pub fn set(&mut self, key: String, value: String, deadline: Option<SystemTime>) {
         self.incr_version(&key);
         match value.parse::<u64>() {
             Ok(i) => self.store.insert(key.clone(), Value::Integer(i)),
@@ -226,7 +226,7 @@ impl Redis {
         let expired = self
             .expire
             .get(key)
-            .is_some_and(|deadline| *deadline <= Instant::now());
+            .is_some_and(|deadline| *deadline <= SystemTime::now());
         if expired {
             self.incr_version(key);
             self.expire.remove(key);
@@ -289,7 +289,7 @@ impl Redis {
         let expired = self
             .expire
             .get(key)
-            .is_some_and(|deadline| *deadline <= Instant::now());
+            .is_some_and(|deadline| *deadline <= SystemTime::now());
         if expired {
             self.incr_version(key);
             self.expire.remove(key);
