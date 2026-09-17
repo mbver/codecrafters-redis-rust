@@ -32,8 +32,11 @@ impl<R: Read> RdbReader<R> {
 
     pub fn load(&mut self) -> io::Result<()> {
         self.read_header()?;
+        println!("===== read header pass");
         let op_code = self.read_meta()?;
+        println!("===== read meta pass");
         self.read_db(op_code)?;
+        println!("===== read db pass");
         Ok(())
     }
 
