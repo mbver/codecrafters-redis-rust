@@ -97,12 +97,15 @@ impl<R: Read> RdbReader<R> {
 
     fn read_meta(&mut self) -> io::Result<u8> {
         loop {
+            println!("===== reading opcode");
             let op_code = self.read_u8()?;
             if op_code != OP_METADATA {
                 return Ok(op_code);
             }
+            println!("===== opcode pass");
             let key = self.read_string()?;
             let value = self.read_string()?;
+            println!("===== key, value {}, {}", key, value);
             self.metadata.push((key, value));
         }
     }
