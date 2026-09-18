@@ -1,5 +1,5 @@
 use std::{
-    io::{self, BufReader, Read, Seek, SeekFrom},
+    io::{self, BufReader, Read},
     time::{Duration, SystemTime},
 };
 
@@ -29,18 +29,10 @@ pub struct RdbReader<R: Read> {
     redis: Redis,
 }
 
-impl<R: Read + Seek> RdbReader<R> {
+impl<R: Read> RdbReader<R> {
     pub fn new(reader: R) -> Self {
-        let mut reader = BufReader::new(reader);
-        let mut buf = vec![];
-        let _ = reader.read_to_end(&mut buf);
-        for byte in buf {
-            print!("{byte:02x }");
-        }
-        println!("");
-        let _ = reader.seek(SeekFrom::Start(0));
         Self {
-            reader,
+            reader: BufReader::new(reader),
             metadata: Vec::new(),
             redis: Redis::new(),
         }
@@ -48,11 +40,8 @@ impl<R: Read + Seek> RdbReader<R> {
 
     pub fn load(&mut self) -> io::Result<()> {
         self.read_header()?;
-        println!("===== read header pass");
         let op_code = self.read_meta()?;
-        println!("===== read meta pass");
         self.read_db(op_code)?;
-        println!("===== read db pass");
         Ok(())
     }
 
@@ -136,7 +125,6 @@ impl<R: Read + Seek> RdbReader<R> {
         match first >> 6 {
             0b00 | 0b01 | 0b10 => {
                 let len = self.read_length_with_first(first)? as usize;
-                println!("===== length is: {}", len);
                 let mut buf = vec![0u8; len];
                 self.read_exact(&mut buf)?;
                 return String::from_utf8(buf).map_err(|e| io_invalid_data(e));
@@ -148,16 +136,12 @@ impl<R: Read + Seek> RdbReader<R> {
 
     fn read_meta(&mut self) -> io::Result<u8> {
         loop {
-            println!("===== reading opcode");
             let op_code = self.read_u8()?;
             if op_code != OP_METADATA {
                 return Ok(op_code);
             }
-            println!("===== opcode pass");
             let key = self.read_string()?;
-            println!("====== read key {}", key);
             let value = self.read_string()?;
-            println!("===== read value {}", value);
             self.metadata.push((key, value));
         }
     }
