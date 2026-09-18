@@ -30,7 +30,8 @@ fn main() {
         Ok(redis) => redis,
         Err(e) => {
             eprintln!("error loading db: {e}");
-            return;
+            // TODO: this shouldn't continue!
+            Arc::new(RedisShared::new())
         }
     };
     let listener = TcpListener::bind(format!("127.0.0.1:{}", config.port)).unwrap();
