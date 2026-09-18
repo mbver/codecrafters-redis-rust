@@ -12,7 +12,17 @@ const OP_DB_SIZE: u8 = 0xFB;
 const OP_STRING_TYPE: u8 = 0x00;
 const OP_EXPIRY_MS: u8 = 0xFC;
 const OP_EXPIRY_SEC: u8 = 0xFD;
+const TAG_UINT32: u8 = 0b10000000;
+const TAG_UINT64: u8 = 0b10000001;
 
+const LEN_SPECIAL: u8 = 0b00000011;
+const ENCODE_INT8: u8 = 0;
+const ENCODE_INT16: u8 = 1;
+const ENCODE_INT32: u8 = 2;
+
+const PREFIX_INT8: u8 = LEN_SPECIAL << 6 | ENCODE_INT8;
+const PREFIX_INT16: u8 = LEN_SPECIAL << 6 | ENCODE_INT16;
+const PREFIX_INT32: u8 = LEN_SPECIAL << 6 | ENCODE_INT32;
 pub struct RdbReader<R: Read> {
     reader: BufReader<R>,
     metadata: Vec<(String, String)>,
@@ -62,18 +72,22 @@ impl<R: Read + Seek> RdbReader<R> {
 
     fn read_length(&mut self) -> io::Result<u64> {
         let first = self.read_u8()?;
+        self.read_length_with_first(first)
+    }
+
+    fn read_length_with_first(&mut self, first: u8) -> io::Result<u64> {
         let value = match first >> 6 {
             0b00 => (first & 0x3f) as u64,
             0b01 => {
                 let second = self.read_u8()?;
                 ((first & 0x3f) as u64) << 8 | second as u64
             }
-            0b10 => {
+            0b10 if first == TAG_UINT32 => {
                 let mut buf = [0u8; 4];
                 self.reader.read_exact(&mut buf)?;
                 u32::from_be_bytes(buf) as u64
             }
-            0b11 => {
+            0b10 if first == TAG_UINT64 => {
                 let mut buf = [0u8; 8];
                 self.read_exact(&mut buf)?;
                 u64::from_be_bytes(buf)
@@ -94,12 +108,42 @@ impl<R: Read + Seek> RdbReader<R> {
     fn read_exact(&mut self, buf: &mut [u8]) -> io::Result<()> {
         self.reader.read_exact(buf)
     }
+
+    fn read_int_string(&mut self, first: u8) -> io::Result<String> {
+        let result = match first {
+            PREFIX_INT8 => {
+                let value = self.read_u8()? as i8;
+                value.to_string()
+            }
+            PREFIX_INT16 => {
+                let mut buf = [0u8; 2];
+                self.read_exact(&mut buf)?;
+                let value = i16::from_le_bytes(buf);
+                value.to_string()
+            }
+            PREFIX_INT32 => {
+                let mut buf = [0u8; 4];
+                self.read_exact(&mut buf)?;
+                let value = i32::from_le_bytes(buf);
+                value.to_string()
+            }
+            _ => return Err(io_invalid_data("read_int_string: invalid first byte")),
+        };
+        Ok(result)
+    }
     fn read_string(&mut self) -> io::Result<String> {
-        let len = self.read_length()? as usize;
-        println!("===== length is: {}", len);
-        let mut buf = vec![0u8; len];
-        self.read_exact(&mut buf)?;
-        String::from_utf8(buf).map_err(|e| io_invalid_data(e))
+        let first = self.read_u8()?;
+        match first >> 6 {
+            0b00 | 0b01 | 0b10 => {
+                let len = self.read_length_with_first(first)? as usize;
+                println!("===== length is: {}", len);
+                let mut buf = vec![0u8; len];
+                self.read_exact(&mut buf)?;
+                return String::from_utf8(buf).map_err(|e| io_invalid_data(e));
+            }
+            0b11 => return self.read_int_string(first),
+            _ => return Err(io_invalid_data("invalid opcode for string")),
+        }
     }
 
     fn read_meta(&mut self) -> io::Result<u8> {
