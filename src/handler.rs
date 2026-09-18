@@ -281,7 +281,7 @@ fn is_write_command(command: &[String]) -> bool {
         || cmd.eq_ignore_ascii_case("RPUSH")
 }
 
-fn encode_command(command: &[String]) -> Vec<u8> {
+fn encode_slice(command: &[String]) -> Vec<u8> {
     let mut out = Vec::new();
     write!(&mut out, "*{}\r\n", command.len()).unwrap();
     for arg in command {
@@ -351,7 +351,7 @@ impl Handler {
                 return Next::Done;
             }
             let is_write = is_write_command(&command); // USE OPTION for encoded and eliminate is_write
-            let encoded = encode_command(&command);
+            let encoded = encode_slice(&command);
             let cmd_log = command.clone();
             if let Err(e) = self.handle_command(&mut stream, command) {
                 eprintln!("handle command: io error: {:?}, command: {:?}", e, cmd_log);
@@ -1017,7 +1017,10 @@ impl Handler {
         Ok(())
     }
     fn handle_get_all_keys(&mut self, stream: &mut TcpStream) -> io::Result<()> {
-        stream.write_all(b"*1\r\n$9\r\nraspberry\r\n")
+        let mut redis = self.redis.lock();
+        let keys = redis.get_all_keys();
+        let out = encode_slice(&keys);
+        stream.write_all(&out)
     }
 }
 

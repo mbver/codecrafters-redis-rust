@@ -467,6 +467,24 @@ impl Redis {
             }
         }
     }
+
+    pub fn remove_all_expired(&mut self) {
+        let now = SystemTime::now();
+        let expired: Vec<_> = self
+            .expire
+            .iter()
+            .filter(|&(_, deadline)| deadline <= &now)
+            .map(|(key, _)| key.clone())
+            .collect();
+        for key in expired {
+            self.expire.remove(&key);
+            self.store.remove(&key);
+        }
+    }
+    pub fn get_all_keys(&mut self) -> Vec<String> {
+        self.remove_all_expired();
+        self.store.keys().cloned().collect()
+    }
 }
 
 fn normalize_idx(idx: isize, length: usize) -> usize {
