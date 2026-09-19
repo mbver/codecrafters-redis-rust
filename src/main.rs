@@ -27,11 +27,7 @@ fn main() {
     let config = parse_args();
     let redis = match load_db(&config) {
         Ok(redis) => redis,
-        Err(e) => {
-            eprintln!("error loading db: {e}");
-            // TODO: this shouldn't continue!
-            Arc::new(RedisShared::new())
-        }
+        Err(_) => Arc::new(RedisShared::new()), // TODO: should handle the error?
     };
     let listener = TcpListener::bind(format!("127.0.0.1:{}", config.port)).unwrap();
     let role = match &config.replica_of {
