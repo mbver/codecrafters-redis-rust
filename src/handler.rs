@@ -668,7 +668,6 @@ impl Handler {
                     return write!(stream, "${}\r\n{}\r\n", values[0].len(), values[0]);
                 }
                 write_slice_resp(stream, &values)?;
-                write!(stream, "*{}\r\n", values.len())?;
                 Ok(())
             }
             Err(e) => write!(stream, "{e}"),
