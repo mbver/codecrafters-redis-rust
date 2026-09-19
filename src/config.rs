@@ -1,20 +1,35 @@
-use std::env;
+use std::{env, path::PathBuf};
 
 #[derive(Clone)]
 pub struct Config {
     pub port: u16,
     pub replica_of: Option<(String, u16)>,
-    pub dir: Option<String>,
+    pub dir: PathBuf,
     pub rdb_filename: Option<String>,
+    pub append_only: String,
+    pub append_dirname: String,
+    pub append_filename: String,
+    pub append_fsync: String,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        let pwd = std::env::current_dir().expect("failed to retrieve current dir");
+        Config {
+            port: 6379,
+            replica_of: None,
+            dir: pwd,
+            rdb_filename: None,
+            append_only: "no".to_string(),
+            append_dirname: "appendonlydir".to_string(),
+            append_filename: "appendonly.aof".to_string(),
+            append_fsync: "everysec".to_string(),
+        }
+    }
 }
 
 pub fn parse_args() -> Config {
-    let mut config = Config {
-        port: 6379,
-        replica_of: None,
-        dir: None,
-        rdb_filename: None,
-    };
+    let mut config = Config::default();
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -38,7 +53,7 @@ pub fn parse_args() -> Config {
             }
             "--dir" => {
                 let dir = args.next().expect("missing rdb dir");
-                config.dir = Some(dir);
+                config.dir = PathBuf::from(dir);
             }
             "--dbfilename" => {
                 let rdb_filename = args.next().expect("missing rdb filename");

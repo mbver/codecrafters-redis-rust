@@ -15,6 +15,7 @@ use std::fmt::Write as FmtWrite;
 use crate::config::Config;
 use crate::fatal;
 use crate::helper::io_invalid_data;
+use crate::helper::write_slice_resp;
 use crate::parser::{Command, Parser};
 use crate::redis::{EntryId, Redis, RedisError, StreamEntry, Value};
 
@@ -1000,7 +1001,7 @@ impl Handler {
     fn handle_config_get(&mut self, stream: &mut TcpStream, arg: &String) -> io::Result<()> {
         match arg.as_str() {
             "dir" => {
-                let dir = self.config.dir.as_deref().unwrap_or("");
+                let dir = self.config.dir.to_string_lossy().into_owned();
                 write!(stream, "*2\r\n$3\r\ndir\r\n${}\r\n{}\r\n", dir.len(), dir)?;
             }
             "dbfilename" => {
@@ -1012,6 +1013,14 @@ impl Handler {
                     dbfilename
                 )?;
             }
+            "appendonly" => write_slice_resp(stream, &["appendonly", &self.config.append_only])?,
+            "appenddirname" => {
+                write_slice_resp(stream, &["appenddirname", &self.config.append_dirname])?
+            }
+            "appendfilename" => {
+                write_slice_resp(stream, &["appendfilename", &self.config.append_filename])?
+            }
+            "appendfsync" => write_slice_resp(stream, &["appendfsync", &self.config.append_fsync])?,
             _ => {}
         }
         Ok(())

@@ -1,7 +1,6 @@
 use std::fs::File;
 use std::io::{self, Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::path::Path;
 use std::process;
 use std::sync::Arc;
 
@@ -126,14 +125,10 @@ fn send_psync(stream: &mut TcpStream, _: Option<String>, _: i64) -> io::Result<(
 }
 
 fn load_db(config: &Config) -> io::Result<Arc<RedisShared>> {
-    let Some(dir) = &config.dir else {
-        return Ok(Arc::new(RedisShared::new()));
-    };
-
     let Some(dbfile) = &config.rdb_filename else {
         return Err(io_invalid_data("missing dbfile"));
     };
-    let path = Path::new(dir).join(dbfile);
+    let path = config.dir.join(dbfile);
     let file = File::open(path)?;
     let mut rdb_reader = RdbReader::new(file);
     rdb_reader.load()?;
