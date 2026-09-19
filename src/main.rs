@@ -133,6 +133,9 @@ fn create_aof(config: &Config) -> io::Result<()> {
         std::fs::create_dir(&dir)?;
         let path = dir.join(format!("{}.1.incr.aof", config.append_filename));
         let _ = OpenOptions::new().create(true).append(true).open(path)?;
+        let path = dir.join(format!("{}.manifest", config.append_filename));
+        let mut manifest = File::create(path)?;
+        manifest.write(b"file appendonly.aof.1.incr.aof seq 1 type i")?;
     }
     Ok(())
 }
