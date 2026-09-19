@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::process;
@@ -29,7 +29,7 @@ fn main() {
         Ok(redis) => redis,
         Err(_) => Arc::new(RedisShared::new()), // TODO: should handle the error?
     };
-    if let Err(e) = create_appendonly_dir(&config) {
+    if let Err(e) = create_aof(&config) {
         eprintln!("failed to create appendonly dir {e}");
         return;
     }
@@ -127,10 +127,14 @@ fn load_db(config: &Config) -> io::Result<Arc<RedisShared>> {
     Ok(Arc::new(RedisShared::with_db(db)))
 }
 
-fn create_appendonly_dir(config: &Config) -> io::Result<()> {
+fn create_aof(config: &Config) -> io::Result<()> {
     if config.append_only.eq_ignore_ascii_case("yes") {
         let path = config.dir.join(&config.append_dirname);
         std::fs::create_dir(path)?;
+        let path = config
+            .dir
+            .join(format!("{}.1.incr.aof", config.append_filename));
+        let _ = OpenOptions::new().create(true).append(true).open(path)?;
     }
     Ok(())
 }
