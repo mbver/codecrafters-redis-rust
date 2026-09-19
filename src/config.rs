@@ -52,12 +52,23 @@ pub fn parse_args() -> Config {
                 config.replica_of = Some((host, port));
             }
             "--dir" => {
-                let dir = args.next().expect("missing rdb dir");
+                let dir = args.next().expect("missing rdb dir value");
                 config.dir = PathBuf::from(dir);
             }
             "--dbfilename" => {
-                let rdb_filename = args.next().expect("missing rdb filename");
-                config.rdb_filename = Some(rdb_filename);
+                config.rdb_filename = Some(args.next().expect("missing rdb filename value"));
+            }
+            "--appendonly" => {
+                config.append_only = args.next().expect("missing appendonly value");
+            }
+            "--appendirname" => {
+                config.append_dirname = args.next().expect("missing appenddirname value");
+            }
+            "--appendfilename" => {
+                config.append_filename = args.next().expect("missing appendfilename value");
+            }
+            "--appendfsync" => {
+                config.append_fsync = args.next().expect("missing appendfsync value");
             }
             _ => {
                 eprintln!("unknown argument");
