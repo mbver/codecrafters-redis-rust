@@ -61,7 +61,7 @@ pub fn parse_args() -> Config {
             "--appendonly" => {
                 config.append_only = args.next().expect("missing appendonly value");
             }
-            "--appendirname" => {
+            "--appenddirname" => {
                 config.append_dirname = args.next().expect("missing appenddirname value");
             }
             "--appendfilename" => {
