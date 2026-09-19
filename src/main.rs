@@ -129,12 +129,9 @@ fn load_db(config: &Config) -> io::Result<Arc<RedisShared>> {
 
 fn create_aof(config: &Config) -> io::Result<()> {
     if config.append_only.eq_ignore_ascii_case("yes") {
-        let path = config.dir.join(&config.append_dirname);
-        std::fs::create_dir(path)?;
-        let path = config
-            .dir
-            .join(format!("{}.1.incr.aof", config.append_filename));
-        println!("============= gonna create: {:?}", path);
+        let dir = config.dir.join(&config.append_dirname);
+        std::fs::create_dir(&dir)?;
+        let path = dir.join(format!("{}.1.incr.aof", config.append_filename));
         let _ = OpenOptions::new().create(true).append(true).open(path)?;
     }
     Ok(())
