@@ -1002,16 +1002,11 @@ impl Handler {
         match arg.as_str() {
             "dir" => {
                 let dir = self.config.dir.to_string_lossy().into_owned();
-                write!(stream, "*2\r\n$3\r\ndir\r\n${}\r\n{}\r\n", dir.len(), dir)?;
+                write_slice_resp(stream, &["dir", &dir])?;
             }
             "dbfilename" => {
                 let dbfilename = self.config.rdb_filename.as_deref().unwrap_or("");
-                write!(
-                    stream,
-                    "*2\r\n$3\r\ndir\r\n${}\r\n{}\r\n",
-                    dbfilename.len(),
-                    dbfilename
-                )?;
+                write_slice_resp(stream, &["dbfilename", dbfilename])?;
             }
             "appendonly" => write_slice_resp(stream, &["appendonly", &self.config.append_only])?,
             "appenddirname" => {
