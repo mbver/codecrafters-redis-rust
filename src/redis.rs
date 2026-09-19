@@ -227,7 +227,6 @@ impl Redis {
             .expire
             .get(key)
             .is_some_and(|deadline| *deadline <= SystemTime::now());
-        println!("======== key: {key}, expired: {expired}");
         if expired {
             self.incr_version(key);
             self.expire.remove(key);
