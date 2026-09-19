@@ -29,6 +29,10 @@ fn main() {
         Ok(redis) => redis,
         Err(_) => Arc::new(RedisShared::new()), // TODO: should handle the error?
     };
+    if let Err(e) = create_appendonly_dir(&config) {
+        eprintln!("failed to create appendonly dir {e}");
+        return;
+    }
     let listener = TcpListener::bind(format!("127.0.0.1:{}", config.port)).unwrap();
     let role = match &config.replica_of {
         Some((host, port)) => {
@@ -121,4 +125,12 @@ fn load_db(config: &Config) -> io::Result<Arc<RedisShared>> {
     rdb_reader.load()?;
     let db = rdb_reader.into_db();
     Ok(Arc::new(RedisShared::with_db(db)))
+}
+
+fn create_appendonly_dir(config: &Config) -> io::Result<()> {
+    if config.append_only.eq_ignore_ascii_case("yes") {
+        let path = config.dir.join(&config.append_dirname);
+        std::fs::create_dir(path)?;
+    }
+    Ok(())
 }
