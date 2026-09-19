@@ -135,7 +135,8 @@ fn create_aof(config: &Config) -> io::Result<()> {
         let _ = OpenOptions::new().create(true).append(true).open(path)?;
         let path = dir.join(format!("{}.manifest", config.append_filename));
         let mut manifest = File::create(path)?;
-        manifest.write(b"file appendonly.aof.1.incr.aof seq 1 type i")?;
+        manifest.write(b"file appendonly.aof.1.incr.aof seq 1 type i\n")?;
+        manifest.flush()?;
         println!("========== writing manifest done!");
     }
     Ok(())
