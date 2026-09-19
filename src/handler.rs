@@ -407,12 +407,7 @@ impl Handler {
                     fatal("handle_repl_command is called in non-slave node");
                 };
                 let offset = offset.to_string();
-                if let Err(e) = write!(
-                    stream,
-                    "*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n${}\r\n{}\r\n",
-                    offset.len(),
-                    offset
-                ) {
+                if let Err(e) = write_slice_resp(stream, &["REPLCONF", "ACK", &offset]) {
                     eprintln!("io error: {e}");
                 }
             }
@@ -621,12 +616,7 @@ impl Handler {
             let mut redis = self.redis.lock();
             redis.lrange(key, start, end)
         };
-        write!(stream, "*{}\r\n", values.len())?;
-        for v in values {
-            write!(stream, "${}\r\n", v.len())?;
-            stream.write_all(v.as_bytes())?;
-            stream.write_all(b"\r\n")?;
-        }
+        write_slice_resp(stream, &values)?;
         Ok(())
     }
 
@@ -677,12 +667,8 @@ impl Handler {
                 if !is_array {
                     return write!(stream, "${}\r\n{}\r\n", values[0].len(), values[0]);
                 }
+                write_slice_resp(stream, &values)?;
                 write!(stream, "*{}\r\n", values.len())?;
-                for v in values {
-                    write!(stream, "${}\r\n", v.len())?;
-                    stream.write_all(v.as_bytes())?;
-                    stream.write_all(b"\r\n")?;
-                }
                 Ok(())
             }
             Err(e) => write!(stream, "{e}"),
@@ -706,11 +692,10 @@ impl Handler {
             match db.lpop(key, 1) {
                 Ok(Some(values)) if !values.is_empty() => {
                     drop(db);
-                    write!(stream, "*{}\r\n", 1 + values.len())?;
-                    write!(stream, "${}\r\n{}\r\n", key.len(), key)?;
-                    for v in values {
-                        write!(stream, "${}\r\n{}\r\n", v.len(), v)?;
-                    }
+                    let mut items = Vec::with_capacity(1 + values.len());
+                    items.push(key);
+                    items.extend(values.iter());
+                    write_slice_resp(stream, &items)?;
                     return Ok(());
                 }
                 Ok(res) => {
@@ -724,14 +709,7 @@ impl Handler {
                             if res.is_none() {
                                 return stream.write_all(b"*-1\r\n");
                             }
-                            return write!(
-                                stream,
-                                "*3\r\n$5\r\nBLPOP\r\n${}\r\n{}\r\n${}\r\n{}\r\n",
-                                key.len(),
-                                key,
-                                arg.len(),
-                                arg
-                            );
+                            return write_slice_resp(stream, &["BLPOP", key, arg]);
                         }
                     }
                     continue;

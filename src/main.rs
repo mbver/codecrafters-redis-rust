@@ -20,7 +20,7 @@ use crate::config::{Config, parse_args};
 use crate::handler::{
     Handler, MasterState, RedisShared, Role, SlaveInfo, parse_bulk_len, readline_exact,
 };
-use crate::helper::io_invalid_data;
+use crate::helper::{io_invalid_data, write_slice_resp};
 use crate::rdb::RdbReader;
 fn main() {
     println!("Logs from your program will appear here!");
@@ -86,22 +86,13 @@ fn ping(host: &str, port: u16) -> io::Result<Option<TcpStream>> {
 
 fn send_replconf(stream: &mut TcpStream, port: u16) -> io::Result<()> {
     let port = port.to_string();
-    write!(
-        stream,
-        "*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n${}\r\n{}\r\n",
-        port.len(),
-        port
-    )?;
+    write_slice_resp(stream, &["REPLCONF", "listening-port", &port])?;
     let mut buf = [0; 512];
     let n = stream.read(&mut buf)?; // TODO: change to read_exact
     if &buf[..n] != b"+OK\r\n" {
         return Err(io_invalid_data("invalid replconf result"));
     }
-
-    write!(
-        stream,
-        "*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n"
-    )?;
+    write_slice_resp(stream, &["REPLCONF", "capa", "psync2"])?;
 
     let n = stream.read(&mut buf)?;
     if &buf[..n] != b"+OK\r\n" {
@@ -111,7 +102,7 @@ fn send_replconf(stream: &mut TcpStream, port: u16) -> io::Result<()> {
 }
 
 fn send_psync(stream: &mut TcpStream, _: Option<String>, _: i64) -> io::Result<()> {
-    write!(stream, "*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n")?;
+    write_slice_resp(stream, &["PSYNC", "?", "-1"])?;
     let _ = readline_exact(stream)?;
     let line = readline_exact(stream)?;
     let data_len = parse_bulk_len(&line)?;
