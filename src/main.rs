@@ -134,6 +134,7 @@ fn create_aof(config: &Config) -> io::Result<()> {
         let path = config
             .dir
             .join(format!("{}.1.incr.aof", config.append_filename));
+        println!("============= gonna create: {:?}", path);
         let _ = OpenOptions::new().create(true).append(true).open(path)?;
     }
     Ok(())
