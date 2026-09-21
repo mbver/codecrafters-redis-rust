@@ -1,5 +1,8 @@
-i will need 2 file handles: one for read and one for write
+- manifest file: we have the file handle. then we must make it readable
+- should we keep it? until now we only use it to replay
+- to replay, we read manifest to get the file and then replay with the file
+- so for replay, only need manifest, not the file
 
-the read will be used first and then the write is passed to set_aof
-
-but when we create the first? and can we create the 2nd from the first
+- next, we read manifest. it might have many lines. we select the line with type i and extract the file name
+- after extract the file name, we open it for reading.
+- after open it, the we pass the file handle to handle_replay

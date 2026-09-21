@@ -1,5 +1,5 @@
 use std::fs::{File, OpenOptions};
-use std::io::{self, Read, Write};
+use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::process;
 use std::sync::Arc;
@@ -30,12 +30,6 @@ fn main() {
         Err(_) => Arc::new(RedisShared::new()), // TODO: should handle the error?
     };
 
-    let (aof_read, aof_write) = match create_aof(&config) {
-        Ok(Some((aof_read, aof_write))) => (Some(aof_read), Some(aof_write)),
-        Ok(None) => (None, None),
-        Err(e) => fatal(&format!("create aof error: {e}")),
-    };
-    println!("======= aof_read: {:?}", aof_read);
     let role = match &config.replica_of {
         Some((host, port)) => {
             start_replica(host, *port, config.port, redis.clone(), config.clone());
@@ -45,15 +39,21 @@ fn main() {
     };
 
     let listener = TcpListener::bind(format!("127.0.0.1:{}", config.port)).unwrap();
-    let mut client = Handler::new(role.clone(), redis.clone(), config.clone());
+    let mut replay_client = Handler::new(role.clone(), redis.clone(), config.clone());
 
-    match client.handle_replay(aof_read) {
+    match replay_aof(&config, &mut replay_client) {
         Ok(_) => {}
-        Err(e) => fatal(&format!("replay aof error: {e}")),
+        Err(e) => fatal(&format!("replay aof error {e}")),
     };
+
+    let file = match create_aof(&config) {
+        Ok(file) => file,
+        Err(e) => fatal(&format!("create aof error: {e}")),
+    };
+
     println!("============= replay finish");
     let mut guard = redis.lock();
-    guard.set_aof(aof_write);
+    guard.set_aof(file);
 
     for stream in listener.incoming() {
         match stream {
@@ -141,7 +141,50 @@ fn load_db(config: &Config) -> io::Result<Arc<RedisShared>> {
     Ok(Arc::new(RedisShared::with_db(db)))
 }
 
-fn create_aof(config: &Config) -> io::Result<Option<(File, File)>> {
+fn replay_aof(config: &Config, client: &mut Handler) -> io::Result<()> {
+    if !config.append_only.eq_ignore_ascii_case("yes") {
+        return Ok(());
+    }
+    let dir = config.dir.join(&config.append_dirname);
+    if !dir.exists() {
+        return Ok(());
+    }
+    let filename = &config.append_filename;
+    let path = dir.join(format!("{}.1.incr.aof", filename));
+    if !path.exists() {
+        return Ok(());
+    }
+    let manifest = File::open(path)?;
+    let reader = BufReader::new(manifest);
+
+    for line in reader.lines() {
+        let line = line?;
+        let mut parts = line.split_whitespace();
+
+        let _file = parts.next();
+        let filename = parts.next();
+        let Some(filename) = filename else {
+            continue;
+        };
+        let _seq = parts.next();
+        let _seq_value = parts.next();
+        let _type = parts.next();
+        let type_value = parts.next();
+
+        let Some(type_value) = type_value else {
+            continue;
+        };
+        if !type_value.eq("i") {
+            continue;
+        }
+        let path = dir.join(filename);
+        let file = OpenOptions::new().create(true).read(true).open(&path)?;
+        client.handle_replay(Some(file))?;
+    }
+    Ok(())
+}
+
+fn create_aof(config: &Config) -> io::Result<Option<File>> {
     if !config.append_only.eq_ignore_ascii_case("yes") {
         return Ok(None);
     }
@@ -151,13 +194,11 @@ fn create_aof(config: &Config) -> io::Result<Option<(File, File)>> {
     println!("========= create dir ok");
     let filename = &config.append_filename;
     let path = dir.join(format!("{}.1.incr.aof", filename));
-    let write_aof = OpenOptions::new().create(true).append(true).open(&path)?; // create the file before reading
-    let read_aof = OpenOptions::new().read(true).open(&path)?;
-    println!("============= aof size: {}", read_aof.metadata()?.len());
+    let file = OpenOptions::new().create(true).append(true).open(&path)?; // create the file before reading
     println!("========== create file ok");
     let path = dir.join(format!("{}.manifest", filename));
     let mut manifest = File::create(path)?;
     println!("========== create manifest file ok");
     write!(manifest, "file {}.1.incr.aof seq 1 type i", filename)?;
-    Ok(Some((read_aof, write_aof)))
+    Ok(Some(file))
 }
