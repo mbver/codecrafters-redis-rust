@@ -145,6 +145,7 @@ fn replay_aof(config: &Config, client: &mut Handler) -> io::Result<()> {
     if !config.append_only.eq_ignore_ascii_case("yes") {
         return Ok(());
     }
+    println!("========= replaying AOF now");
     let dir = config.dir.join(&config.append_dirname);
     if !dir.exists() {
         return Ok(());
@@ -178,6 +179,7 @@ fn replay_aof(config: &Config, client: &mut Handler) -> io::Result<()> {
             continue;
         }
         let path = dir.join(filename);
+        println!("============= openning aof file {:?}", path);
         let file = OpenOptions::new().create(true).read(true).open(&path)?;
         client.handle_replay(Some(file))?;
     }
