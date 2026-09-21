@@ -29,11 +29,11 @@ fn main() {
         Ok(redis) => redis,
         Err(_) => Arc::new(RedisShared::new()), // TODO: should handle the error?
     };
-    if let Err(e) = create_aof(&config, redis.clone()) {
-        eprintln!("failed to create appendonly dir {e}");
-        return;
-    }
-    let listener = TcpListener::bind(format!("127.0.0.1:{}", config.port)).unwrap();
+
+    let file = match create_aof(&config) {
+        Ok(file) => file,
+        Err(e) => fatal(&format!("create aof error: {e}")),
+    };
     let role = match &config.replica_of {
         Some((host, port)) => {
             start_replica(host, *port, config.port, redis.clone(), config.clone());
@@ -41,6 +41,18 @@ fn main() {
         }
         None => Role::Master(Arc::new(MasterState::new())),
     };
+
+    let listener = TcpListener::bind(format!("127.0.0.1:{}", config.port)).unwrap();
+    let mut client = Handler::new(role.clone(), redis.clone(), config.clone());
+
+    let file = match client.handle_replay(file) {
+        Ok(file) => file,
+        Err(e) => fatal(&format!("replay aof error: {e}")),
+    };
+
+    let mut guard = redis.lock();
+    guard.set_aof(file);
+
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
@@ -127,18 +139,17 @@ fn load_db(config: &Config) -> io::Result<Arc<RedisShared>> {
     Ok(Arc::new(RedisShared::with_db(db)))
 }
 
-fn create_aof(config: &Config, redis: Arc<RedisShared>) -> io::Result<()> {
-    if config.append_only.eq_ignore_ascii_case("yes") {
-        let dir = config.dir.join(&config.append_dirname);
-        std::fs::create_dir(&dir)?;
-        let filename = &config.append_filename;
-        let path = dir.join(format!("{}.1.incr.aof", filename));
-        let file = OpenOptions::new().create(true).append(true).open(path)?;
-        let path = dir.join(format!("{}.manifest", filename));
-        let mut manifest = File::create(path)?;
-        write!(manifest, "file {}.1.incr.aof seq 1 type i", filename)?;
-        let mut redis = redis.lock();
-        redis.set_aof(file);
+fn create_aof(config: &Config) -> io::Result<Option<File>> {
+    if !config.append_only.eq_ignore_ascii_case("yes") {
+        return Ok(None);
     }
-    Ok(())
+    let dir = config.dir.join(&config.append_dirname);
+    std::fs::create_dir(&dir)?;
+    let filename = &config.append_filename;
+    let path = dir.join(format!("{}.1.incr.aof", filename));
+    let file = OpenOptions::new().create(true).append(true).open(path)?;
+    let path = dir.join(format!("{}.manifest", filename));
+    let mut manifest = File::create(path)?;
+    write!(manifest, "file {}.1.incr.aof seq 1 type i", filename)?;
+    Ok(Some(file))
 }

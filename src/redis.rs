@@ -204,8 +204,8 @@ impl Redis {
             aof_file: None,
         }
     }
-    pub fn set_aof(&mut self, file: File) {
-        self.aof_file = Some(file)
+    pub fn set_aof(&mut self, file: Option<File>) {
+        self.aof_file = file
     }
     fn incr_version(&mut self, key: &str) {
         let v = self.versions.entry(key.to_string()).or_insert(0);

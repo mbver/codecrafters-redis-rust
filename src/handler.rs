@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::fs::File;
 use std::io;
+use std::io::BufReader;
 use std::str;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -366,6 +368,49 @@ impl Handler {
             }
             Next::Continue(stream)
         });
+    }
+
+    pub fn handle_replay(&mut self, file: Option<File>) -> io::Result<Option<File>> {
+        let Some(file) = file else { return Ok(None) };
+        let mut reader = BufReader::new(file);
+        let mut parser = Parser::new();
+        let mut tmp = [0u8; 512];
+
+        loop {
+            while let Some(command) = parser.try_parse().unwrap_or_else(|e| {
+                eprintln!("protocol error: {e}");
+                std::process::exit(1);
+            }) {
+                let command: Vec<String> = command
+                    .items
+                    .iter()
+                    .map(|b| String::from_utf8_lossy(b).to_string()) // TODO: move to Vec<u8>, no lossy things anymore
+                    .collect();
+                match command.as_slice() {
+                    [cmd, key, value, args @ ..] if cmd.eq_ignore_ascii_case("SET") => {
+                        let _ = self.handle_set_internal(key, value, args, None);
+                    }
+                    [cmd, key, values @ ..] if cmd.eq_ignore_ascii_case("RPUSH") => {
+                        let _ = self.handle_rpush_internal(key, values, None);
+                    }
+                    [cmd, key, values @ ..] if cmd.eq_ignore_ascii_case("LPUSH") => {
+                        let _ = self.handle_lpush_internal(key, values, None);
+                    }
+                    [cmd, key, arg @ ..] if cmd.eq_ignore_ascii_case("LPOP") => {
+                        let _ = self.handle_lpop_internal(key, arg);
+                    }
+                    [cmd, key] if cmd.eq_ignore_ascii_case("INCR") => {
+                        let _ = self.handle_incr_internal(key, None);
+                    }
+                    _ => return Err(io_invalid_data(format!("invalid command {:?}", command))),
+                }
+            }
+            let n = reader.read(&mut tmp)?;
+            if n == 0 {
+                return Ok(Some(reader.into_inner()));
+            }
+            parser.feed(&tmp[..n]);
+        }
     }
 
     pub fn handle_replication(&mut self, stream: TcpStream) {
