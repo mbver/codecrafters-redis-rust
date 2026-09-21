@@ -584,6 +584,7 @@ impl Handler {
         {
             let mut redis = self.redis.lock();
             redis.set(key.to_string(), value.to_string(), deadline);
+            println!("======= SET {key}: {value}");
             redis.write_aof(aof)
         }
     }
