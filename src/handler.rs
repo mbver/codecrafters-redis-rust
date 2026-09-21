@@ -605,6 +605,7 @@ impl Handler {
         println!("============= Get command: {key}");
         let res = {
             let mut redis = self.redis.lock();
+            println!("========== after redis lock");
             redis.get(key)
         };
         println!("============= get result: {:?}", res);
