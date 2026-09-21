@@ -50,7 +50,7 @@ fn main() {
         Ok(_) => {}
         Err(e) => fatal(&format!("replay aof error: {e}")),
     };
-
+    println!("============= replay finish");
     let mut guard = redis.lock();
     guard.set_aof(aof_write);
 
