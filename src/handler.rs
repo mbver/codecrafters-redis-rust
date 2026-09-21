@@ -375,7 +375,6 @@ impl Handler {
         let mut reader = BufReader::new(file);
         let mut parser = Parser::new();
         let mut tmp = [0u8; 512];
-        println!("===== gonnad start loop");
         loop {
             while let Some(command) = parser.try_parse().unwrap_or_else(|e| {
                 eprintln!("protocol error: {e}");
@@ -386,10 +385,8 @@ impl Handler {
                     .iter()
                     .map(|b| String::from_utf8_lossy(b).to_string()) // TODO: move to Vec<u8>, no lossy things anymore
                     .collect();
-                println!("======= get command: {:?}", command);
                 match command.as_slice() {
                     [cmd, key, value, args @ ..] if cmd.eq_ignore_ascii_case("SET") => {
-                        println!("============ GONNA handle SET");
                         let _ = self.handle_set_internal(key, value, args, None);
                     }
                     [cmd, key, values @ ..] if cmd.eq_ignore_ascii_case("RPUSH") => {
@@ -409,11 +406,9 @@ impl Handler {
             }
             let n = reader.read(&mut tmp)?;
             if n == 0 {
-                println!("======= got 0, returning");
                 return Ok(());
             }
             parser.feed(&tmp[..n]);
-            println!("======= end of iteration");
         }
     }
 
@@ -584,7 +579,6 @@ impl Handler {
         {
             let mut redis = self.redis.lock();
             redis.set(key.to_string(), value.to_string(), deadline);
-            println!("======= SET {key}: {value}");
             redis.write_aof(aof)
         }
     }
@@ -602,13 +596,10 @@ impl Handler {
     }
 
     fn handle_get(&mut self, stream: &mut TcpStream, key: &String) -> io::Result<()> {
-        println!("============= Get command: {key}");
         let res = {
             let mut redis = self.redis.lock();
-            println!("========== after redis lock");
             redis.get(key)
         };
-        println!("============= get result: {:?}", res);
         match res {
             Ok(Some(s)) => {
                 let v = format!("${}\r\n{}\r\n", s.len(), s.to_string());
