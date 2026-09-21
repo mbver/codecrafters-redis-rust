@@ -386,6 +386,7 @@ impl Handler {
                     .iter()
                     .map(|b| String::from_utf8_lossy(b).to_string()) // TODO: move to Vec<u8>, no lossy things anymore
                     .collect();
+                println!("======= get command: {:?}", command);
                 match command.as_slice() {
                     [cmd, key, value, args @ ..] if cmd.eq_ignore_ascii_case("SET") => {
                         let _ = self.handle_set_internal(key, value, args, None);
