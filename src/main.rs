@@ -143,6 +143,7 @@ fn create_aof(config: &Config) -> io::Result<Option<File>> {
     if !config.append_only.eq_ignore_ascii_case("yes") {
         return Ok(None);
     }
+    println!("========== starting");
     let dir = config.dir.join(&config.append_dirname);
     std::fs::create_dir(&dir)?;
     println!("========= create dir ok");
