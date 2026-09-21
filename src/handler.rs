@@ -375,7 +375,7 @@ impl Handler {
         let mut reader = BufReader::new(file);
         let mut parser = Parser::new();
         let mut tmp = [0u8; 512];
-
+        println!("===== starting loop");
         loop {
             while let Some(command) = parser.try_parse().unwrap_or_else(|e| {
                 eprintln!("protocol error: {e}");
@@ -410,6 +410,7 @@ impl Handler {
                 return Ok(Some(reader.into_inner()));
             }
             parser.feed(&tmp[..n]);
+            println!("======= end of iteration");
         }
     }
 
