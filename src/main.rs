@@ -150,8 +150,10 @@ fn replay_aof(config: &Config, client: &mut Handler) -> io::Result<()> {
     if !dir.exists() {
         return Ok(());
     }
+    println!("========= replay dir exists");
     let filename = &config.append_filename;
-    let path = dir.join(format!("{}.1.incr.aof", filename));
+    let path = dir.join(format!("{}.manifest", filename));
+    println!("========= found aof");
     if !path.exists() {
         return Ok(());
     }
@@ -180,9 +182,14 @@ fn replay_aof(config: &Config, client: &mut Handler) -> io::Result<()> {
         }
         let path = dir.join(filename);
         println!("============= openning aof file {:?}", path);
-        let file = OpenOptions::new().create(true).read(true).open(&path)?;
+        if !path.exists() {
+            continue;
+        }
+        println!("============= exist aof file {:?}", path);
+        let file = File::open(path)?;
         client.handle_replay(Some(file))?;
     }
+    println!("======= DONE REPLAYING AOF");
     Ok(())
 }
 
