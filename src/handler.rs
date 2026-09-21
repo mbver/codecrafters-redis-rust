@@ -602,6 +602,7 @@ impl Handler {
     }
 
     fn handle_get(&mut self, stream: &mut TcpStream, key: &String) -> io::Result<()> {
+        println!("============= Get command: {key}");
         let res = {
             let mut redis = self.redis.lock();
             redis.get(key)
