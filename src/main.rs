@@ -153,6 +153,7 @@ fn create_aof(config: &Config) -> io::Result<Option<(File, File)>> {
     let path = dir.join(format!("{}.1.incr.aof", filename));
     let write_aof = OpenOptions::new().create(true).append(true).open(&path)?; // create the file before reading
     let read_aof = OpenOptions::new().read(true).open(&path)?;
+    println!("============= aof size: {}", read_aof.metadata()?.len());
     println!("========== create file ok");
     let path = dir.join(format!("{}.manifest", filename));
     let mut manifest = File::create(path)?;
