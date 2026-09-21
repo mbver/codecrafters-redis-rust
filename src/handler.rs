@@ -370,8 +370,8 @@ impl Handler {
         });
     }
 
-    pub fn handle_replay(&mut self, file: Option<File>) -> io::Result<Option<File>> {
-        let Some(file) = file else { return Ok(None) };
+    pub fn handle_replay(&mut self, file: Option<File>) -> io::Result<()> {
+        let Some(file) = file else { return Ok(()) };
         let mut reader = BufReader::new(file);
         let mut parser = Parser::new();
         let mut tmp = [0u8; 512];
@@ -407,7 +407,7 @@ impl Handler {
             }
             let n = reader.read(&mut tmp)?;
             if n == 0 {
-                return Ok(Some(reader.into_inner()));
+                return Ok(());
             }
             parser.feed(&tmp[..n]);
             println!("======= end of iteration");

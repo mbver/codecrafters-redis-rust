@@ -1,0 +1,5 @@
+i will need 2 file handles: one for read and one for write
+
+the read will be used first and then the write is passed to set_aof
+
+but when we create the first? and can we create the 2nd from the first
