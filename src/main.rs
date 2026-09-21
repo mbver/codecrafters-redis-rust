@@ -35,6 +35,7 @@ fn main() {
         Ok(None) => (None, None),
         Err(e) => fatal(&format!("create aof error: {e}")),
     };
+    println!("======= aof_read: {:?}", aof_read);
     let role = match &config.replica_of {
         Some((host, port)) => {
             start_replica(host, *port, config.port, redis.clone(), config.clone());
