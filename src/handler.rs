@@ -607,7 +607,7 @@ impl Handler {
             let mut redis = self.redis.lock();
             redis.get(key)
         };
-
+        println!("============= get result: {:?}", res);
         match res {
             Ok(Some(s)) => {
                 let v = format!("${}\r\n{}\r\n", s.len(), s.to_string());
