@@ -389,6 +389,7 @@ impl Handler {
                 println!("======= get command: {:?}", command);
                 match command.as_slice() {
                     [cmd, key, value, args @ ..] if cmd.eq_ignore_ascii_case("SET") => {
+                        println!("============ GONNA handle SET");
                         let _ = self.handle_set_internal(key, value, args, None);
                     }
                     [cmd, key, values @ ..] if cmd.eq_ignore_ascii_case("RPUSH") => {

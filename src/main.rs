@@ -51,7 +51,6 @@ fn main() {
         Err(e) => fatal(&format!("create aof error: {e}")),
     };
 
-    println!("============= replay finish");
     let mut guard = redis.lock();
     guard.set_aof(file);
 
