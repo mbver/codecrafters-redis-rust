@@ -145,7 +145,7 @@ fn create_aof(config: &Config) -> io::Result<Option<File>> {
     }
     println!("========== starting");
     let dir = config.dir.join(&config.append_dirname);
-    std::fs::create_dir(&dir)?;
+    std::fs::create_dir_all(&dir)?;
     println!("========= create dir ok");
     let filename = &config.append_filename;
     let path = dir.join(format!("{}.1.incr.aof", filename));
