@@ -51,8 +51,10 @@ fn main() {
         Err(e) => fatal(&format!("create aof error: {e}")),
     };
 
-    let mut guard = redis.lock();
-    guard.set_aof(file);
+    {
+        let mut guard = redis.lock();
+        guard.set_aof(file);
+    }
 
     for stream in listener.incoming() {
         match stream {
