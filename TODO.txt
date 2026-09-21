@@ -1,0 +1,1 @@
+- convert Vec<String> to Vec<Vec<u8>> for Command and avoid lossy step

@@ -29,7 +29,7 @@ fn main() {
         Ok(redis) => redis,
         Err(_) => Arc::new(RedisShared::new()), // TODO: should handle the error?
     };
-    if let Err(e) = create_aof(&config) {
+    if let Err(e) = create_aof(&config, redis.clone()) {
         eprintln!("failed to create appendonly dir {e}");
         return;
     }
@@ -127,16 +127,18 @@ fn load_db(config: &Config) -> io::Result<Arc<RedisShared>> {
     Ok(Arc::new(RedisShared::with_db(db)))
 }
 
-fn create_aof(config: &Config) -> io::Result<()> {
+fn create_aof(config: &Config, redis: Arc<RedisShared>) -> io::Result<()> {
     if config.append_only.eq_ignore_ascii_case("yes") {
         let dir = config.dir.join(&config.append_dirname);
         std::fs::create_dir(&dir)?;
         let filename = &config.append_filename;
         let path = dir.join(format!("{}.1.incr.aof", filename));
-        let _ = OpenOptions::new().create(true).append(true).open(path)?;
+        let file = OpenOptions::new().create(true).append(true).open(path)?;
         let path = dir.join(format!("{}.manifest", filename));
         let mut manifest = File::create(path)?;
         write!(manifest, "file {}.1.incr.aof seq 1 type i", filename)?;
+        let mut redis = redis.lock();
+        redis.set_aof(file);
     }
     Ok(())
 }

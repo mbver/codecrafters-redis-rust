@@ -34,7 +34,7 @@ impl RedisShared {
             redis: Mutex::new(db),
         }
     }
-    fn lock(&self) -> MutexGuard<'_, Redis> {
+    pub fn lock(&self) -> MutexGuard<'_, Redis> {
         self.redis.lock().unwrap()
     }
 }
@@ -384,19 +384,19 @@ impl Handler {
             .collect();
         match command.as_slice() {
             [cmd, key, value, args @ ..] if cmd.eq_ignore_ascii_case("SET") => {
-                let _ = self.handle_set_internal(key, value, args);
+                let _ = self.handle_set_internal(key, value, args, None);
             }
             [cmd, key, values @ ..] if cmd.eq_ignore_ascii_case("RPUSH") => {
-                let _ = self.handle_rpush_internal(key, values);
+                let _ = self.handle_rpush_internal(key, values, None);
             }
             [cmd, key, values @ ..] if cmd.eq_ignore_ascii_case("LPUSH") => {
-                let _ = self.handle_lpush_internal(key, values);
+                let _ = self.handle_lpush_internal(key, values, None);
             }
             [cmd, key, arg @ ..] if cmd.eq_ignore_ascii_case("LPOP") => {
                 let _ = self.handle_lpop_internal(key, arg);
             }
             [cmd, key] if cmd.eq_ignore_ascii_case("INCR") => {
-                let _ = self.handle_incr_internal(key);
+                let _ = self.handle_incr_internal(key, None);
             }
             [cmd, subcmd, arg]
                 if cmd.eq_ignore_ascii_case("replconf")
@@ -426,6 +426,11 @@ impl Handler {
     }
 
     fn handle_command(&mut self, stream: &mut TcpStream, command: Vec<String>) -> io::Result<()> {
+        let aof = if is_write_command(&command) {
+            Some(encode_slice(&command))
+        } else {
+            None
+        };
         match command.as_slice() {
             [cmd] if cmd.eq_ignore_ascii_case("EXEC") => return self.handle_exec(stream),
             [cmd] if cmd.eq_ignore_ascii_case("DISCARD") => return self.handle_discard(stream),
@@ -445,14 +450,14 @@ impl Handler {
             [cmd] if cmd.eq_ignore_ascii_case("PING") => stream.write_all(b"+PONG\r\n"),
 
             [cmd, key, value, args @ ..] if cmd.eq_ignore_ascii_case("SET") => {
-                self.handle_set(stream, key, value, args)
+                self.handle_set(stream, key, value, args, aof)
             }
             [cmd, key] if cmd.eq_ignore_ascii_case("GET") => self.handle_get(stream, key),
             [cmd, key, values @ ..] if cmd.eq_ignore_ascii_case("RPUSH") => {
-                self.handle_rpush(stream, key, values)
+                self.handle_rpush(stream, key, values, aof)
             }
             [cmd, key, values @ ..] if cmd.eq_ignore_ascii_case("LPUSH") => {
-                self.handle_lpush(stream, key, values)
+                self.handle_lpush(stream, key, values, aof)
             }
             [cmd, key, start, end] if cmd.eq_ignore_ascii_case("LRANGE") => {
                 self.handle_lrange(stream, key, start, end)
@@ -483,7 +488,7 @@ impl Handler {
             {
                 self.handle_block_xread(stream, ms, key, id)
             }
-            [cmd, key] if cmd.eq_ignore_ascii_case("INCR") => self.handle_incr(stream, key),
+            [cmd, key] if cmd.eq_ignore_ascii_case("INCR") => self.handle_incr(stream, key, aof),
             [cmd] if cmd.eq_ignore_ascii_case("MULTI") => self.handle_multi(stream),
             [cmd, subcmd] if cmd.eq_ignore_ascii_case("INFO") => self.handle_info(stream, subcmd),
             [cmd, ..] if cmd.eq_ignore_ascii_case("REPLCONF") => self.handle_replconf(stream),
@@ -508,7 +513,13 @@ impl Handler {
         stream.write_all(resp.as_bytes())
     }
 
-    fn handle_set_internal(&mut self, key: &String, value: &String, args: &[String]) {
+    fn handle_set_internal(
+        &mut self,
+        key: &String,
+        value: &String,
+        args: &[String],
+        aof: Option<Vec<u8>>,
+    ) -> io::Result<()> {
         let deadline = match args {
             [] => None,
             [cmd, seconds] if cmd.eq_ignore_ascii_case("EX") => {
@@ -518,13 +529,13 @@ impl Handler {
                 Some(SystemTime::now() + Duration::from_millis(milliseconds.parse().unwrap()))
             }
             _ => {
-                eprintln!("invalid argument: {:?}", args);
-                return;
+                return Err(io_invalid_data(format!("invalid argument: {:?}", args)));
             }
         };
         {
             let mut redis = self.redis.lock();
             redis.set(key.to_string(), value.to_string(), deadline);
+            redis.write_aof(aof)
         }
     }
 
@@ -534,8 +545,9 @@ impl Handler {
         key: &String,
         value: &String,
         args: &[String],
+        aof: Option<Vec<u8>>,
     ) -> io::Result<()> {
-        self.handle_set_internal(key, value, args);
+        self.handle_set_internal(key, value, args, aof)?;
         stream.write_all(b"+OK\r\n")
     }
 
@@ -555,15 +567,21 @@ impl Handler {
         }
     }
 
-    fn handle_rpush_internal(&mut self, key: &String, values: &[String]) -> String {
+    fn handle_rpush_internal(
+        &mut self,
+        key: &String,
+        values: &[String],
+        aof: Option<Vec<u8>>,
+    ) -> io::Result<String> {
         let mut redis = self.redis.lock();
         let res = redis.rpush(key, values);
+        redis.write_aof(aof)?;
         match res {
             Ok(size) => {
                 redis.notify_one(key);
-                format!(":{}\r\n", size)
+                Ok(format!(":{}\r\n", size))
             }
-            Err(e) => format!("{e}"),
+            Err(e) => Ok(format!("{e}")),
         }
     }
 
@@ -572,20 +590,27 @@ impl Handler {
         stream: &mut TcpStream,
         key: &String,
         values: &[String],
+        aof: Option<Vec<u8>>,
     ) -> io::Result<()> {
-        let output = self.handle_rpush_internal(key, values);
+        let output = self.handle_rpush_internal(key, values, aof)?;
         stream.write_all(output.as_bytes())
     }
 
-    fn handle_lpush_internal(&mut self, key: &String, values: &[String]) -> String {
+    fn handle_lpush_internal(
+        &mut self,
+        key: &String,
+        values: &[String],
+        aof: Option<Vec<u8>>,
+    ) -> io::Result<String> {
         let mut redis = self.redis.lock();
         let res = redis.lpush(key, values);
+        redis.write_aof(aof)?;
         match res {
             Ok(size) => {
                 redis.notify_one(key);
-                format!(":{}\r\n", size)
+                Ok(format!(":{}\r\n", size))
             }
-            Err(e) => format!("{e}"),
+            Err(e) => Ok(format!("{e}")),
         }
     }
 
@@ -594,8 +619,9 @@ impl Handler {
         stream: &mut TcpStream,
         key: &String,
         values: &[String],
+        aof: Option<Vec<u8>>,
     ) -> io::Result<()> {
-        let output = self.handle_lpush_internal(key, values);
+        let output = self.handle_lpush_internal(key, values, aof)?;
         stream.write_all(output.as_bytes())
     }
 
@@ -844,13 +870,22 @@ impl Handler {
         }
     }
 
-    fn handle_incr_internal(&mut self, key: &str) -> Result<u64, RedisError> {
+    fn handle_incr_internal(&mut self, key: &str, aof: Option<Vec<u8>>) -> Result<u64, RedisError> {
         let mut redis = self.redis.lock();
-        redis.incr(key)
+        let num = redis.incr(key)?;
+        redis
+            .write_aof(aof)
+            .map_err(|e| RedisError::WriteAofError(e))?;
+        return Ok(num);
     }
 
-    fn handle_incr(&mut self, stream: &mut TcpStream, key: &str) -> io::Result<()> {
-        let res = self.handle_incr_internal(key);
+    fn handle_incr(
+        &mut self,
+        stream: &mut TcpStream,
+        key: &str,
+        aof: Option<Vec<u8>>,
+    ) -> io::Result<()> {
+        let res = self.handle_incr_internal(key, aof);
         match res {
             Ok(num) => {
                 write!(stream, ":{}\r\n", num)

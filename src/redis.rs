@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, VecDeque},
     fmt::Display,
+    fs::File,
     io::{self, Write},
     str::FromStr,
     sync::{Arc, Condvar},
@@ -14,6 +15,7 @@ pub enum RedisError {
     WrongType,
     StreamIdParseError,
     InvalidStreamId(String),
+    WriteAofError(io::Error),
 }
 
 impl Display for RedisError {
@@ -23,6 +25,7 @@ impl Display for RedisError {
             RedisError::WrongType => write!(f, "wrong type"),
             RedisError::StreamIdParseError => write!(f, "stream id parse error"),
             RedisError::InvalidStreamId(e) => write!(f, "{e}"),
+            RedisError::WriteAofError(e) => write!(f, "{e}"),
         }
     }
 }
@@ -188,6 +191,7 @@ pub struct Redis {
     versions: HashMap<String, u64>,
     expire: HashMap<String, SystemTime>,
     waiters: HashMap<String, Arc<Condvar>>,
+    aof_file: Option<File>,
 }
 
 impl Redis {
@@ -197,7 +201,11 @@ impl Redis {
             versions: HashMap::new(),
             expire: HashMap::new(),
             waiters: HashMap::new(),
+            aof_file: None,
         }
+    }
+    pub fn set_aof(&mut self, file: File) {
+        self.aof_file = Some(file)
     }
     fn incr_version(&mut self, key: &str) {
         let v = self.versions.entry(key.to_string()).or_insert(0);
@@ -484,6 +492,12 @@ impl Redis {
     pub fn get_all_keys(&mut self) -> Vec<String> {
         self.remove_all_expired();
         self.store.keys().cloned().collect()
+    }
+    pub fn write_aof(&mut self, data: Option<Vec<u8>>) -> io::Result<()> {
+        let (Some(file), Some(data)) = (&mut self.aof_file, data) else {
+            return Ok(());
+        };
+        file.write_all(&data)
     }
 }
 
