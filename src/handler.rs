@@ -547,6 +547,10 @@ impl Handler {
             [cmd, arg] if cmd.eq_ignore_ascii_case("KEYS") && arg.eq_ignore_ascii_case("*") => {
                 self.handle_get_all_keys(stream)
             }
+            [cmd, arg] if cmd.eq_ignore_ascii_case("SUBSCRIBE") => {
+                self.handle_subscribe(stream, arg)
+            }
+
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
             }
@@ -1080,6 +1084,14 @@ impl Handler {
         let keys = redis.get_all_keys();
         let out = encode_slice(&keys);
         stream.write_all(&out)
+    }
+    fn handle_subscribe(&mut self, stream: &mut TcpStream, arg: &String) -> io::Result<()> {
+        write!(
+            stream,
+            "*3\r\n$9\r\nsubscribe\r\n${}\r\n{}\r\n:1\r\n",
+            arg.len(),
+            arg
+        )
     }
 }
 
