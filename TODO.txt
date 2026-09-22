@@ -1,1 +1,3 @@
 - convert Vec<String> to Vec<Vec<u8>> for Command and avoid lossy step
+
+- encode slice with various type, like ["subscribe", "foo", 1]?
