@@ -1131,7 +1131,6 @@ impl Handler {
         let tx = self.pubsub_tx.as_ref().unwrap();
         let mut redis = self.redis.lock();
         let len = redis.subscribe(channel_name.clone(), self.id, tx.clone());
-        println!("======= gonna subscribe {channel_name}, len = {len}");
         let output = format!(
             "*3\r\n$9\r\nsubscribe\r\n${}\r\n{}\r\n:{}\r\n",
             channel_name.len(),
