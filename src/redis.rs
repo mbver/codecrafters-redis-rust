@@ -4,10 +4,12 @@ use std::{
     fs::File,
     io::{self, Write},
     str::FromStr,
-    sync::{Arc, Condvar},
+    sync::{Arc, Condvar, mpsc::Sender},
     time::{SystemTime, UNIX_EPOCH},
     u64,
 };
+
+use crate::pubsub::{PubSubRegistry, WriteMsg};
 
 #[derive(Debug)]
 pub enum RedisError {
@@ -192,6 +194,7 @@ pub struct Redis {
     expire: HashMap<String, SystemTime>,
     waiters: HashMap<String, Arc<Condvar>>,
     aof_file: Option<File>,
+    pubsub: PubSubRegistry,
 }
 
 impl Redis {
@@ -202,6 +205,7 @@ impl Redis {
             expire: HashMap::new(),
             waiters: HashMap::new(),
             aof_file: None,
+            pubsub: PubSubRegistry::new(),
         }
     }
     pub fn set_aof(&mut self, file: Option<File>) {
@@ -498,6 +502,15 @@ impl Redis {
             return Ok(());
         };
         file.write_all(&data)
+    }
+    pub fn subscribe(&mut self, channel: String, id: u64, tx: Sender<WriteMsg>) -> usize {
+        self.pubsub.subscribe(channel, id, tx)
+    }
+    pub fn unsubscribe(&mut self, channel: &str, id: u64) -> usize {
+        self.pubsub.unsubscribe(channel, id)
+    }
+    pub fn cleanup_subscription(&mut self, id: u64) {
+        self.pubsub.cleanup(id);
     }
 }
 

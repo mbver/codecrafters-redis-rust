@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::fs::File;
-use std::io;
 use std::io::BufReader;
 use std::str;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime};
+use std::{io, thread};
 use std::{
     io::{Read, Write},
     net::TcpStream,
@@ -19,6 +19,7 @@ use crate::fatal;
 use crate::helper::io_invalid_data;
 use crate::helper::write_slice_resp;
 use crate::parser::{Command, Parser};
+use crate::pubsub::WriteMsg;
 use crate::redis::{EntryId, Redis, RedisError, StreamEntry, Value};
 
 pub struct RedisShared {
@@ -266,12 +267,21 @@ impl MasterInfo {
     }
 }
 
+#[derive(PartialEq)]
+enum Mode {
+    Normal,
+    Subscribed,
+}
+
 pub struct Handler {
+    id: u64,
     role: Role,
     redis: SharedRedis,
     transaction: Option<Transaction>,
     watch_list: HashMap<String, u64>,
     config: Config,
+    mode: Mode,
+    pubsub_tx: Option<Sender<WriteMsg>>,
 }
 
 fn is_write_command(command: &[String]) -> bool {
@@ -329,13 +339,16 @@ where
 }
 
 impl Handler {
-    pub fn new(role: Role, redis: SharedRedis, config: Config) -> Self {
+    pub fn new(id: u64, role: Role, redis: SharedRedis, config: Config) -> Self {
         Self {
+            id,
             role,
             redis,
             transaction: None,
             watch_list: HashMap::new(),
             config,
+            mode: Mode::Normal,
+            pubsub_tx: None,
         }
     }
     pub fn handle(&mut self, stream: TcpStream) {
@@ -345,29 +358,40 @@ impl Handler {
                 .iter()
                 .map(|b| String::from_utf8_lossy(b).to_string())
                 .collect();
-            if let Some(cmd) = command.first()
-                && cmd.eq_ignore_ascii_case("PSYNC")
-            {
-                if let Err(e) = self.handle_psync(stream) {
-                    eprintln!("psync io error: {:?}", e);
-                }
-                return Next::Done;
+            if self.mode == Mode::Subscribed {
+                return self.handle_subscribed(stream, command);
             }
-            let is_write = is_write_command(&command); // USE OPTION for encoded and eliminate is_write
-            let encoded = encode_slice(&command);
-            let cmd_log = command.clone();
-            if let Err(e) = self.handle_command(&mut stream, command) {
-                eprintln!("handle command: io error: {:?}, command: {:?}", e, cmd_log);
-                return Next::Done;
-            }
-            if is_write {
-                if let Role::Master(master) = &mut self.role {
-                    let tx = master.replication_tx.clone();
-                    let _ = tx.send(ReplicationMessage::Command(encoded));
-                }
-            }
-            Next::Continue(stream)
+            self.handle_normal(stream, command)
         });
+    }
+
+    fn handle_normal(&mut self, mut stream: TcpStream, command: Vec<String>) -> Next {
+        if let Some(cmd) = command.first()
+            && cmd.eq_ignore_ascii_case("PSYNC")
+        {
+            if let Err(e) = self.handle_psync(stream) {
+                eprintln!("psync io error: {:?}", e);
+            }
+            return Next::Done;
+        }
+        let is_write = is_write_command(&command); // USE OPTION for encoded and eliminate is_write
+        let encoded = encode_slice(&command);
+        let cmd_log = command.clone();
+        if let Err(e) = self.handle_command(&mut stream, command) {
+            eprintln!("handle command: io error: {:?}, command: {:?}", e, cmd_log);
+            return Next::Done;
+        }
+        if is_write {
+            if let Role::Master(master) = &mut self.role {
+                let tx = master.replication_tx.clone();
+                let _ = tx.send(ReplicationMessage::Command(encoded));
+            }
+        }
+        Next::Continue(stream)
+    }
+
+    fn handle_subscribed(&mut self, mut stream: TcpStream, command: Vec<String>) -> Next {
+        return Next::Continue(stream); // TODO: implement subscribe mode handler
     }
 
     pub fn handle_replay(&mut self, file: Option<File>) -> io::Result<()> {
@@ -1085,13 +1109,36 @@ impl Handler {
         let out = encode_slice(&keys);
         stream.write_all(&out)
     }
-    fn handle_subscribe(&mut self, stream: &mut TcpStream, arg: &String) -> io::Result<()> {
-        write!(
-            stream,
-            "*3\r\n$9\r\nsubscribe\r\n${}\r\n{}\r\n:1\r\n",
-            arg.len(),
-            arg
+    fn handle_subscribe(
+        &mut self,
+        stream: &mut TcpStream,
+        channel_name: &String,
+    ) -> io::Result<()> {
+        if self.pubsub_tx.is_none() {
+            let (tx, rx) = channel();
+            self.pubsub_tx = Some(tx);
+            // self.mode = Mode::Subscribed; // TODO: it is redundant, think about removing
+            let mut write_stream = stream.try_clone()?;
+            thread::spawn(move || {
+                for msg in rx {
+                    if write_stream.write_all(&msg).is_err() {
+                        break;
+                    }
+                }
+            });
+        }
+        let tx = self.pubsub_tx.as_ref().unwrap();
+        let mut redis = self.redis.lock();
+        let len = redis.subscribe(channel_name.clone(), self.id, tx.clone());
+        let output = format!(
+            "*3\r\n$9\r\nsubscribe\r\n${}\r\n{}\r\n:{}\r\n",
+            channel_name.len(),
+            channel_name,
+            len
         )
+        .into_bytes();
+        tx.send(output).map_err(io::Error::other)?;
+        Ok(())
     }
 }
 

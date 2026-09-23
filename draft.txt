@@ -1,8 +1,92 @@
-- manifest file: we have the file handle. then we must make it readable
-- should we keep it? until now we only use it to replay
-- to replay, we read manifest to get the file and then replay with the file
-- so for replay, only need manifest, not the file
+- about pub/sub
+    - a client send subscribe to a handler on a channel (it's a topic, no channel yet)
+    - the handler record that: there's a client on that topic
+        - it store the stream or it just increase the count?
+        - topic should be in redis, and must access with a lock
+    - when the client is subscribed to handler
+        - the handler and client's TcpStream is persisted during this state
+        - it means the handler can start handle_command_subscribed on that stream
+            - it will accept only a few and even so, it is handled differently, like PING
+        - redis must store how to connect with the client later? what it does?
 
-- next, we read manifest. it might have many lines. we select the line with type i and extract the file name
-- after extract the file name, we open it for reading.
-- after open it, the we pass the file handle to handle_replay
+- pub/sub workflow
+    - a client call PUBLISH msg ch
+    - the handler handle the publish message
+    - it will call redis to publish the msg to a channel
+    - what redis will do that the msg will reach all the subscribed client?
+        - the handler and the subscribed client are connected. the handler is now running a subscribed loop
+            - it can receive message from the client and handle it differently
+            - it can receive message from redis and send it to the client
+        - to receive the message from redis, it must register a channel to redis
+        - register a channel, it means the handler will send that channel to redis to put in the list on a topic
+        - when publish command is handled, redis will retrieve the channels and send msg to all of them
+        - the waiting handler will receive the msg and send directly to stream
+
+- to race between the stream and the channel
+    - the stream reading command and channel receives msg in different threads
+    - when they got something, they would send that over the channel
+    - another thread will receive that something in a loop and handle it with the write stream
+
+- so we don't actually need 2 channels for that
+    - the handler can send redis to store tx end
+    - redis can send publish msg via that end
+    - and the recv end can plump directly to handling loop. the reading stream loop will take another clone of tx to send when it has a command
+
+- how we handle unsubscribe?
+    - to identify the tx end to remove, we put it in a struct with subscription_id. and then search id to remove
+    - how to close the loop?
+        - the rx end will be closed because recv() is error when tx end is closed
+        - but tx end is also shared by the stream reading loop
+        - the stream reading loop can close by handling the command. it can handle all the command before sending response message to the write stream.
+        - so we don't need to spin a new thread for stream reading loop. it can continue there. and when it hit unsubscribe, it will close all tx_end and exit the read and handling in subscribe mode and get back to normal read loop
+
+- workflow summary
+    - client send subscribe message to handler
+    - handler change to subscribe mode => call it enter_subscribe_mode_loop
+        - handler run a subscribe_mode_read_loop on the stream
+            - it reads command from the client and handle it differently
+            - it sends output message to the subscribe_mode_write_loop to send output to client
+            - when it receives unsubscribe message
+                - it will tell redis to remove the registered id with its tx_end
+                - it will terminate and drop tx end for the write stream it is holding
+                - it will exit subscribe_mode_loop and get back to read_loop and parse command normally
+    - the tx end is registered with redis via a subscription id
+        - redis must hold a subscription_struct that manage the id generation and the channel hashmap that store those id and tx end
+    - the subscription_mode_write_loop will exit if all tx ends is dropped, ie, when subscription_read_mode exit on unsubscribe
+
+- suggestion on collapsing nested subscription_mode_read_loop to only read_loop
+    - having 2 modes for the handler: Normal and Subscribed
+    - on Subscribed mode, spin up the write_subscribed_mode loop
+    - handle message differently => might need a new dispatcher to filter message
+    - on unsubscribe, exit Subscribed mode and terminate the write loop
+
+- Message:
+    - before we have replication message sent to replication loop
+    - now we have
+
+- Client_ID is for a handler that is dealing with a client over Tcp, not of subscription service.
+
+- when tcp stream got `disconnected`, think about cleaning up in subscribed mode
+    - the current read_loop doesn't allow us to have a clean up closure. maybe modify it to have one. as an `Option`.
+
+- subscribed mode can work with mutiple channels. it means unsubscribe does't kill it immediatly, but if it has no channels, it should exit
+
+- what handle_subscribed does:
+    - it filters out the command, handle them with subscribed mode methods
+    - TODO: how about cleanup? -> a cleanup closure must be pass to readloop as Option
+
+- we will not need to change the handler. only explicitly check the mode to accept or reject the command? but that will add a lot of code. just split into 2 groups and re-implement for subscribed mode those needed. if they are many enough, we will check mode on each of them.
+
+- in handle_subscribe
+    - in normal mode, it will
+        - create a channel and keep tx
+        - spin up write loop and let it keep rx end
+        - clone tx and register with redis
+
+- handler should keep tx in Option<tx>
+    - if it is Some, don't spawn write loop, just subscribe
+    - if it is None, create tx,rx, spawn write loop and subscribe
+
+- how to spaw write_loop
+
+- it is a bit redundant, the mode normal and the subscribed mode. pubsub_tx is enough
