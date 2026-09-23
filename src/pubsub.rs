@@ -21,8 +21,9 @@ impl PubSubRegistry {
         let subscribers = self.subscriptions.entry(channel.clone()).or_default();
         subscribers.insert(id, tx);
 
-        self.client_channels.entry(id).or_default().insert(channel);
-        subscribers.len()
+        let channels = self.client_channels.entry(id).or_default();
+        channels.insert(channel);
+        channels.len()
     }
     pub fn unsubscribe(&mut self, channel: &str, id: u64) -> usize {
         if let Some(channels) = self.client_channels.get_mut(&id) {
