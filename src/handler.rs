@@ -1114,6 +1114,7 @@ impl Handler {
         stream: &mut TcpStream,
         channel_name: &String,
     ) -> io::Result<()> {
+        println!("======= gonna subscribe {channel_name}");
         if self.pubsub_tx.is_none() {
             let (tx, rx) = channel();
             self.pubsub_tx = Some(tx);
@@ -1130,6 +1131,7 @@ impl Handler {
         let tx = self.pubsub_tx.as_ref().unwrap();
         let mut redis = self.redis.lock();
         let len = redis.subscribe(channel_name.clone(), self.id, tx.clone());
+        println!("======= gonna subscribe {channel_name}, len = {len}");
         let output = format!(
             "*3\r\n$9\r\nsubscribe\r\n${}\r\n{}\r\n:{}\r\n",
             channel_name.len(),
