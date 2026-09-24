@@ -392,6 +392,16 @@ impl Handler {
                 return Next::Done;
             }
         }
+        let res = match command.as_slice() {
+            [cmd, arg] if cmd.eq_ignore_ascii_case("SUBSCRIBE") => {
+                self.handle_subscribe(&mut stream, arg)
+            }
+            _ => Ok(()),
+        };
+        if res.is_err() {
+            eprintln!("error handling command in subscribed mode: {:?}", command);
+            return Next::Done;
+        }
         return Next::Continue(stream); // TODO: implement subscribe mode handler
     }
 
