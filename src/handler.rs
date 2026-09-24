@@ -384,7 +384,7 @@ impl Handler {
 
     fn handle_subscribed(&mut self, mut stream: TcpStream, command: Vec<String>) -> Next {
         if !is_allowed_in_subscribed_mode(&command) {
-            if stream.write_all(b"-ERR Can't execute 'echo': only (P|S)SUBSCRIBE / (P|S)UNSUBSCRIBE / PING / QUIT / RESET are allowed in this context\r\n").is_err() {
+            if write!(stream, "-ERR Can't execute {:?}: only (P|S)SUBSCRIBE / (P|S)UNSUBSCRIBE / PING / QUIT / RESET are allowed in this context\r\n", &command).is_err() {
                 eprintln!("error writing response to stream");
                 return Next::Done;
             }
