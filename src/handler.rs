@@ -396,6 +396,11 @@ impl Handler {
             [cmd, arg] if cmd.eq_ignore_ascii_case("SUBSCRIBE") => {
                 self.handle_subscribe(&mut stream, arg)
             }
+            [cmd] if cmd.eq_ignore_ascii_case("PING") => {
+                let tx = self.pubsub_tx.as_ref().unwrap().clone();
+                tx.send(encode_slice(&["pong".to_string(), "".to_string()]))
+                    .map_err(io::Error::other)
+            }
             _ => Ok(()),
         };
         if res.is_err() {

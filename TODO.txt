@@ -1,3 +1,5 @@
 - convert Vec<String> to Vec<Vec<u8>> for Command and avoid lossy step
 
 - encode slice with various type, like ["subscribe", "foo", 1]?
+
+- the encode_slice with &[String] is weird. unify the types to vec<u8>??
