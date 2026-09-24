@@ -299,23 +299,25 @@ where
     let mut parser = Parser::new();
     let mut tmp = [0u8; 512];
 
-    loop {
+    'outer: loop {
         while let Some(command) = parser.try_parse().unwrap_or_else(|e| {
             eprintln!("protocol error: {e}");
             std::process::exit(1); // or handle more gracefully
         }) {
             match command_handler(stream, command) {
                 Next::Continue(s) => stream = s,
-                Next::Done => return,
+                Next::Done => {
+                    break 'outer;
+                }
             }
         }
 
         let n = match stream.read(&mut tmp) {
-            Ok(0) => return,
+            Ok(0) => break,
             Ok(n) => n,
             Err(e) => {
                 eprintln!("read error: {e}");
-                return;
+                break;
             }
         };
         parser.feed(&tmp[..n]);
@@ -335,7 +337,7 @@ impl Handler {
         }
     }
     pub fn handle(&mut self, stream: TcpStream) {
-        read_loop(stream, |mut stream, command| {
+        read_loop(stream, |stream, command| {
             let command: Vec<String> = command
                 .items
                 .iter()
@@ -346,6 +348,7 @@ impl Handler {
             }
             self.handle_normal(stream, command)
         });
+        self.cleanup_pubsub();
     }
 
     fn handle_normal(&mut self, mut stream: TcpStream, command: Vec<String>) -> Next {
@@ -1131,7 +1134,6 @@ impl Handler {
         stream: &mut TcpStream,
         channel_name: &String,
     ) -> io::Result<()> {
-        println!("======= gonna subscribe {channel_name}");
         if self.pubsub_tx.is_none() {
             let (tx, rx) = channel();
             self.pubsub_tx = Some(tx);
@@ -1184,6 +1186,12 @@ impl Handler {
         match self.pubsub_tx.as_ref() {
             Some(tx) => tx.send(reply.clone()).map_err(io::Error::other),
             None => stream.write_all(&reply),
+        }
+    }
+    fn cleanup_pubsub(&mut self) {
+        if self.pubsub_tx.is_some() {
+            self.pubsub_tx.take();
+            self.redis.lock().cleanup_subscription(self.id);
         }
     }
 }
