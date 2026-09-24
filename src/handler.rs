@@ -1175,7 +1175,7 @@ impl Handler {
     fn handle_unsubscribe(&mut self, stream: &mut TcpStream, channel: &str) -> io::Result<()> {
         let num_channels = self.redis.lock().unsubscribe(channel, self.id);
         let reply = format!(
-            "*3\r\n$11\r\nunsubscribe\r\n{}\r\n{}\r\n:{}\r\n",
+            "*3\r\n$11\r\nunsubscribe\r\n${}\r\n{}\r\n:{}\r\n",
             channel.len(),
             channel,
             num_channels
