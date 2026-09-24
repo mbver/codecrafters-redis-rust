@@ -16,8 +16,8 @@ use std::fmt::Write as FmtWrite;
 
 use crate::config::Config;
 use crate::fatal;
-use crate::helper::io_invalid_data;
 use crate::helper::write_slice_resp;
+use crate::helper::{io_invalid_data, is_allowed_in_subscribed_mode};
 use crate::parser::{Command, Parser};
 use crate::pubsub::WriteMsg;
 use crate::redis::{EntryId, Redis, RedisError, StreamEntry, Value};
@@ -267,12 +267,6 @@ impl MasterInfo {
     }
 }
 
-#[derive(PartialEq)]
-enum Mode {
-    Normal,
-    Subscribed,
-}
-
 pub struct Handler {
     id: u64,
     role: Role,
@@ -280,7 +274,6 @@ pub struct Handler {
     transaction: Option<Transaction>,
     watch_list: HashMap<String, u64>,
     config: Config,
-    mode: Mode,
     pubsub_tx: Option<Sender<WriteMsg>>,
 }
 
@@ -347,7 +340,6 @@ impl Handler {
             transaction: None,
             watch_list: HashMap::new(),
             config,
-            mode: Mode::Normal,
             pubsub_tx: None,
         }
     }
@@ -358,7 +350,7 @@ impl Handler {
                 .iter()
                 .map(|b| String::from_utf8_lossy(b).to_string())
                 .collect();
-            if self.mode == Mode::Subscribed {
+            if self.pubsub_tx.is_some() {
                 return self.handle_subscribed(stream, command);
             }
             self.handle_normal(stream, command)
@@ -391,6 +383,12 @@ impl Handler {
     }
 
     fn handle_subscribed(&mut self, mut stream: TcpStream, command: Vec<String>) -> Next {
+        if !is_allowed_in_subscribed_mode(&command) {
+            if stream.write_all(b"-ERR Can't execute 'echo': only (P|S)SUBSCRIBE / (P|S)UNSUBSCRIBE / PING / QUIT / RESET are allowed in this context\r\n").is_err() {
+                eprintln!("error writing response to stream");
+                return Next::Done;
+            }
+        }
         return Next::Continue(stream); // TODO: implement subscribe mode handler
     }
 

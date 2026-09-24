@@ -17,3 +17,19 @@ pub fn write_slice_resp<T: AsRef<[u8]>>(stream: &mut TcpStream, items: &[T]) -> 
     }
     Ok(())
 }
+
+pub fn is_allowed_in_subscribed_mode(command: &[String]) -> bool {
+    let Some(first) = command.first() else {
+        return false;
+    };
+    if first.eq_ignore_ascii_case("SUBSCRIBE")
+        || first.eq_ignore_ascii_case("UNSUBSCRIBE")
+        || first.eq_ignore_ascii_case("PSUBSCRIBE")
+        || first.eq_ignore_ascii_case("PUNSUBSCRIBE")
+        || first.eq_ignore_ascii_case("PING")
+        || first.eq_ignore_ascii_case("QUIT")
+    {
+        return true;
+    }
+    false
+}
