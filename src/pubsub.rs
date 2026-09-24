@@ -57,4 +57,11 @@ impl PubSubRegistry {
         }
         self.client_channels.remove(&id);
     }
+    pub fn publish(&mut self, channel: &str, msg: &str) -> usize {
+        let Some(subscribers) = self.subscriptions.get(channel) else {
+            return 0;
+        };
+
+        subscribers.len()
+    }
 }

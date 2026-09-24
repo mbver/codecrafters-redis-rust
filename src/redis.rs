@@ -512,6 +512,9 @@ impl Redis {
     pub fn cleanup_subscription(&mut self, id: u64) {
         self.pubsub.cleanup(id);
     }
+    pub fn publish(&mut self, channel: &str, msg: &str) -> usize {
+        self.pubsub.publish(channel, msg)
+    }
 }
 
 fn normalize_idx(idx: isize, length: usize) -> usize {

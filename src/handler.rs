@@ -401,6 +401,9 @@ impl Handler {
                 tx.send(encode_slice(&["pong".to_string(), "".to_string()]))
                     .map_err(io::Error::other)
             }
+            [cmd, channel, msg] if cmd.eq_ignore_ascii_case("PUBLISH") => {
+                self.handle_publish(&mut stream, channel, msg)
+            }
             _ => Ok(()),
         };
         if res.is_err() {
@@ -498,7 +501,6 @@ impl Handler {
             [cmd] if cmd.eq_ignore_ascii_case("PING") => {
                 // do nothing for non-write command
             }
-
             _ => {
                 unreachable!()
             }
@@ -590,7 +592,9 @@ impl Handler {
             [cmd, arg] if cmd.eq_ignore_ascii_case("SUBSCRIBE") => {
                 self.handle_subscribe(stream, arg)
             }
-
+            [cmd, channel, msg] if cmd.eq_ignore_ascii_case("PUBLISH") => {
+                self.handle_publish(stream, channel, msg)
+            }
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
             }
@@ -1156,6 +1160,19 @@ impl Handler {
         .into_bytes();
         tx.send(output).map_err(io::Error::other)?;
         Ok(())
+    }
+    fn handle_publish(
+        &mut self,
+        stream: &mut TcpStream,
+        channel: &str,
+        msg: &str,
+    ) -> io::Result<()> {
+        let num_subscribers = self.redis.lock().publish(channel, msg);
+        let reply = format!(":{}\r\n", num_subscribers).into_bytes();
+        match self.pubsub_tx.as_ref() {
+            Some(tx) => tx.send(reply).map_err(io::Error::other),
+            None => stream.write_all(&reply),
+        }
     }
 }
 
