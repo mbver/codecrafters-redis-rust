@@ -395,6 +395,9 @@ impl Handler {
             [cmd, channel, msg] if cmd.eq_ignore_ascii_case("PUBLISH") => {
                 self.handle_publish(&mut stream, channel, msg)
             }
+            [cmd, channel] if cmd.eq_ignore_ascii_case("UNSUBSCRIBE") => {
+                self.handle_unsubscribe(&mut stream, channel)
+            }
             _ => Ok(()),
         };
         if res.is_err() {
@@ -585,6 +588,9 @@ impl Handler {
             }
             [cmd, channel, msg] if cmd.eq_ignore_ascii_case("PUBLISH") => {
                 self.handle_publish(stream, channel, msg)
+            }
+            [cmd, channel] if cmd.eq_ignore_ascii_case("UNSUBSCRIBE") => {
+                self.handle_unsubscribe(stream, channel)
             }
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
@@ -1161,7 +1167,22 @@ impl Handler {
         let num_subscribers = self.redis.lock().publish(channel, msg);
         let reply = format!(":{}\r\n", num_subscribers).into_bytes();
         match self.pubsub_tx.as_ref() {
+            // TODO: refactor? into a method?
             Some(tx) => tx.send(reply).map_err(io::Error::other),
+            None => stream.write_all(&reply),
+        }
+    }
+    fn handle_unsubscribe(&mut self, stream: &mut TcpStream, channel: &str) -> io::Result<()> {
+        let num_channels = self.redis.lock().unsubscribe(channel, self.id);
+        let reply = format!(
+            "*3\r\n$11\r\nunsubscribe\r\n{}\r\n{}\r\n:{}\r\n",
+            channel.len(),
+            channel,
+            num_channels
+        )
+        .into_bytes();
+        match self.pubsub_tx.as_ref() {
+            Some(tx) => tx.send(reply.clone()).map_err(io::Error::other),
             None => stream.write_all(&reply),
         }
     }

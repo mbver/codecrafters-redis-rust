@@ -28,19 +28,20 @@ impl PubSubRegistry {
         channels.len()
     }
     pub fn unsubscribe(&mut self, channel: &str, id: u64) -> usize {
-        if let Some(channels) = self.client_channels.get_mut(&id) {
-            channels.remove(channel);
-            if channels.is_empty() {
-                self.client_channels.remove(&id);
-            }
+        let Some(channels) = self.client_channels.get_mut(&id) else {
+            return 0;
+        };
+        channels.remove(channel);
+        let remaining = channels.len();
+        if remaining == 0 {
+            self.client_channels.remove(&id);
         }
 
         let Some(subscribers) = self.subscriptions.get_mut(channel) else {
             return 0;
         };
         subscribers.remove(&id);
-        let remaining = subscribers.len();
-        if remaining == 0 {
+        if subscribers.len() == 0 {
             self.subscriptions.remove(channel);
         }
         remaining
