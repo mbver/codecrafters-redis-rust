@@ -90,3 +90,13 @@
 - how to spaw write_loop
 
 - it is a bit redundant, the mode normal and the subscribed mode. pubsub_tx is enough
+
+- what happens when tx send failed? like the client disconnect and doesn't receive msg anymore? how to clean up failed so it doesn't cascade to others?
+
+- now the queue is unbounded so it wouldn't block. clean up can kill the recv end if client failed and delete the queue
+
+- in reality, we will use bounded channel and detect slow client and remove it.
+    - but with current design, removing is via handler, we can't change the handler mode from redis.
+    - don't use blocking send, but use try_send and detect the error
+    - but the handler that publish is different from those running subscribed mode, they must somehow communicate and decide
+    - currently, we can ignore the error and let the write loop decide clean up

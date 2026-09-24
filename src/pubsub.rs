@@ -61,7 +61,9 @@ impl PubSubRegistry {
         let Some(subscribers) = self.subscriptions.get(channel) else {
             return 0;
         };
-
+        for (_, tx) in subscribers {
+            let _ = tx.send(msg.as_bytes().to_vec());
+        }
         subscribers.len()
     }
 }
