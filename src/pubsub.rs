@@ -3,6 +3,8 @@ use std::{
     sync::mpsc::Sender,
 };
 
+use crate::helper::encode_slice;
+
 pub type WriteMsg = Vec<u8>;
 
 pub struct PubSubRegistry {
@@ -61,11 +63,9 @@ impl PubSubRegistry {
         let Some(subscribers) = self.subscriptions.get(channel) else {
             return 0;
         };
-        println!("====== gonna publish: {}", msg);
-        for (id, tx) in subscribers {
-            println!("====== sending msg: {} to client {}", msg, id);
-            let _ = tx.send(msg.as_bytes().to_vec());
-            println!("======= end sending msg: {} to client {}", msg, id)
+        let msg = encode_slice(&["message".to_string(), channel.to_string(), msg.to_string()]);
+        for (_, tx) in subscribers {
+            let _ = tx.send(msg.clone());
         }
         subscribers.len()
     }

@@ -16,7 +16,7 @@ use std::fmt::Write as FmtWrite;
 
 use crate::config::Config;
 use crate::fatal;
-use crate::helper::write_slice_resp;
+use crate::helper::{encode_slice, write_slice_resp};
 use crate::helper::{io_invalid_data, is_allowed_in_subscribed_mode};
 use crate::parser::{Command, Parser};
 use crate::pubsub::WriteMsg;
@@ -285,15 +285,6 @@ fn is_write_command(command: &[String]) -> bool {
         || cmd.eq_ignore_ascii_case("INCR")
         || cmd.eq_ignore_ascii_case("LPUSH")
         || cmd.eq_ignore_ascii_case("RPUSH")
-}
-
-fn encode_slice(command: &[String]) -> Vec<u8> {
-    let mut out = Vec::new();
-    write!(&mut out, "*{}\r\n", command.len()).unwrap();
-    for arg in command {
-        write!(&mut out, "${}\r\n{}\r\n", arg.len(), arg).unwrap();
-    }
-    out
 }
 
 enum Next {
