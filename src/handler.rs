@@ -595,6 +595,9 @@ impl Handler {
             [cmd, channel] if cmd.eq_ignore_ascii_case("UNSUBSCRIBE") => {
                 self.handle_unsubscribe(stream, channel)
             }
+            [cmd, score, member] if cmd.eq_ignore_ascii_case("ZADD") => {
+                self.handle_zadd(stream, score, member)
+            }
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
             }
@@ -1187,6 +1190,14 @@ impl Handler {
             Some(tx) => tx.send(reply.clone()).map_err(io::Error::other),
             None => stream.write_all(&reply),
         }
+    }
+    fn handle_zadd(
+        &mut self,
+        stream: &mut TcpStream,
+        score: &String,
+        member: &String,
+    ) -> io::Result<()> {
+        stream.write_all(b":1\r\n")
     }
     fn cleanup_pubsub(&mut self) {
         if self.pubsub_tx.is_some() {
