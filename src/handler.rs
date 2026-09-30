@@ -1197,7 +1197,9 @@ impl Handler {
         score: &String,
         member: &String,
     ) -> io::Result<()> {
-        stream.write_all(b":1\r\n")
+        stream.write_all(b":1\r\n")?;
+        println!("================ write response 1");
+        Ok(())
     }
     fn cleanup_pubsub(&mut self) {
         if self.pubsub_tx.is_some() {
