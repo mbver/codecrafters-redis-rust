@@ -595,8 +595,8 @@ impl Handler {
             [cmd, channel] if cmd.eq_ignore_ascii_case("UNSUBSCRIBE") => {
                 self.handle_unsubscribe(stream, channel)
             }
-            [cmd, score, member] if cmd.eq_ignore_ascii_case("ZADD") => {
-                self.handle_zadd(stream, score, member)
+            [cmd, key, score, member] if cmd.eq_ignore_ascii_case("ZADD") => {
+                self.handle_zadd(stream, key, score, member)
             }
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
@@ -1194,6 +1194,7 @@ impl Handler {
     fn handle_zadd(
         &mut self,
         stream: &mut TcpStream,
+        key: &String,
         score: &String,
         member: &String,
     ) -> io::Result<()> {
