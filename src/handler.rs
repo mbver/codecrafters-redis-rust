@@ -604,6 +604,7 @@ impl Handler {
             [cmd, key, start, end] if cmd.eq_ignore_ascii_case("ZRANGE") => {
                 self.handle_zrange(stream, key, start, end)
             }
+            [cmd, key] if cmd.eq_ignore_ascii_case("ZCARD") => self.handle_zcard(stream, key),
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
             }
@@ -1245,7 +1246,19 @@ impl Handler {
                 write!(stream, "-ERR: {e}")
             }
         }
-        // Ok(())
+    }
+
+    fn handle_zcard(&mut self, stream: &mut TcpStream, key: &String) -> io::Result<()> {
+        let res = self.redis.lock().z_card(key);
+        match res {
+            Ok(Some(size)) => {
+                write!(stream, ":{}\r\n", size)
+            }
+            Ok(None) => {
+                write!(stream, ":{}\r\n", 0)
+            }
+            Err(e) => write!(stream, "-ERR: {}\r\n", e),
+        }
     }
     fn cleanup_pubsub(&mut self) {
         if self.pubsub_tx.is_some() {

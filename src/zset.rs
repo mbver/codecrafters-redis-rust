@@ -94,4 +94,8 @@ impl Zset {
     pub fn range(&self, start: isize, end: isize) -> Vec<Member> {
         self.skiplist.range(start, end)
     }
+
+    pub fn card(&self) -> usize {
+        self.skiplist.len()
+    }
 }

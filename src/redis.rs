@@ -11,6 +11,7 @@ use std::{
 
 use crate::{
     pubsub::{PubSubRegistry, WriteMsg},
+    rdb::RdbReader,
     zset::{Member, Zset, ZsetError},
 };
 
@@ -530,6 +531,12 @@ impl Redis {
         Ok(zset.range(start, end))
     }
 
+    pub fn z_card(&mut self, key: &String) -> Result<Option<usize>, RedisError> {
+        let Some(zset) = self.get_mut_zset(key)? else {
+            return Ok(None);
+        };
+        Ok(Some(zset.card()))
+    }
     pub fn incr(&mut self, key: &str) -> Result<u64, RedisError> {
         match self.get_mut_number(key)? {
             Some(num) => {
