@@ -113,7 +113,7 @@ impl<T: Ord> SkipList<T> {
     {
         self.iter()
             .skip(start)
-            .take(end.saturating_sub(start))
+            .take(end.saturating_add(1).saturating_sub(start)) // end is inclusive
             .collect()
     }
 
