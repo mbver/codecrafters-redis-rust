@@ -601,6 +601,9 @@ impl Handler {
             [cmd, key, member] if cmd.eq_ignore_ascii_case("ZRANK") => {
                 self.handle_zrank(stream, key, member)
             }
+            [cmd, key, start, end] if cmd.eq_ignore_ascii_case("ZRANGE") => {
+                self.handle_zrange(stream, key, start, end)
+            }
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
             }
@@ -1222,7 +1225,28 @@ impl Handler {
             Err(e) => write!(stream, "-ERR: {}", e),
         }
     }
-
+    fn handle_zrange(
+        &mut self,
+        stream: &mut TcpStream,
+        key: &String,
+        start: &String,
+        end: &String,
+    ) -> io::Result<()> {
+        let start: usize = start.parse().map_err(io_invalid_data)?;
+        let end: usize = end.parse().map_err(io_invalid_data)?;
+        let res = self.redis.lock().z_range(key, start, end);
+        match res {
+            Ok(v) => {
+                let v: Vec<String> = v.into_iter().map(|item| item.name).collect();
+                let output = encode_slice(v.as_slice());
+                stream.write_all(&output)
+            }
+            Err(e) => {
+                write!(stream, "-ERR: {e}")
+            }
+        }
+        // Ok(())
+    }
     fn cleanup_pubsub(&mut self) {
         if self.pubsub_tx.is_some() {
             self.pubsub_tx.take();

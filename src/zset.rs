@@ -7,8 +7,8 @@ use crate::{
 
 #[derive(Clone)]
 pub struct Member {
-    name: String,
-    score: f64,
+    pub name: String,
+    pub score: f64,
 }
 
 impl PartialEq for Member {
@@ -89,5 +89,9 @@ impl Zset {
             name: member.to_string(),
             score: *score,
         })
+    }
+
+    pub fn range(&self, start: usize, end: usize) -> Vec<Member> {
+        self.skiplist.range(start, end)
     }
 }

@@ -1,5 +1,7 @@
 use std::{cmp::Ordering, ptr::NonNull};
 
+use crate::zset::Member;
+
 const MAX_LEVEL: usize = 32;
 
 type Link<T> = Option<NonNull<Node<T>>>;
@@ -71,6 +73,7 @@ impl<T: Ord> SkipList<T> {
         false
     }
 
+    // TODO: add span so we can search from highest level
     pub fn rank(&self, target: &T) -> Option<usize> {
         let mut rank = 0;
         let mut cur = self.head;
@@ -85,6 +88,33 @@ impl<T: Ord> SkipList<T> {
             }
         }
         None
+    }
+
+    // create an iterator over skiplist
+    // the closure returns an Option<T> each time it is executed
+    // the iterator will stop if it receives None from the closure
+    // the value inside Option is unwrapped and given to the caller
+    fn iter(&self) -> impl Iterator<Item = T>
+    where
+        T: Clone,
+    {
+        let mut cur = self.head;
+        std::iter::from_fn(move || {
+            let next = unsafe { cur.as_ref().next[0] }?; // return None if next is None
+            cur = next;
+            unsafe { next.as_ref() }.value.as_ref().cloned() // returns Option<T> from next.value
+        })
+    }
+
+    // TODO: add span so we can search from highest level
+    pub fn range(&self, start: usize, end: usize) -> Vec<T>
+    where
+        T: Clone,
+    {
+        self.iter()
+            .skip(start)
+            .take(end.saturating_sub(start))
+            .collect()
     }
 
     pub fn insert(&mut self, value: T) {

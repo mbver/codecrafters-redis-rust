@@ -11,7 +11,7 @@ use std::{
 
 use crate::{
     pubsub::{PubSubRegistry, WriteMsg},
-    zset::{Zset, ZsetError},
+    zset::{Member, Zset, ZsetError},
 };
 
 #[derive(Debug)]
@@ -309,6 +309,12 @@ impl Redis {
             None => Ok(None),
         }
     }
+    fn get_mut_zset_or_insert(&mut self, key: &str) -> Result<&mut Zset, RedisError> {
+        match self.get_mut_value_or_insert(key, || Value::Zset(Zset::new())) {
+            Value::Zset(zset) => Ok(zset),
+            _ => Err(RedisError::WrongType),
+        }
+    }
 
     fn get_mut_value(&mut self, key: &str) -> Option<&mut Value> {
         let expired = self
@@ -322,6 +328,22 @@ impl Redis {
             return None;
         }
         self.store.get_mut(key)
+    }
+
+    fn get_mut_value_or_insert<F>(&mut self, key: &str, default: F) -> &mut Value
+    where
+        F: FnOnce() -> Value,
+    {
+        let expired = self
+            .expire
+            .get(key)
+            .is_some_and(|deadline| *deadline <= SystemTime::now());
+        if expired {
+            self.incr_version(key);
+            self.expire.remove(key);
+            self.store.remove(key);
+        }
+        self.store.entry(key.to_string()).or_insert_with(default)
     }
 
     pub fn rpush(&mut self, key: &str, values: &[String]) -> Result<usize, RedisError> {
@@ -484,28 +506,28 @@ impl Redis {
         score: f64,
         member: &String,
     ) -> Result<usize, RedisError> {
-        let zset = loop {
-            match self.get_mut_zset(key)? {
-                Some(zset) => break zset,
-                None => {
-                    self.store.insert(key.to_string(), Value::Zset(Zset::new()));
-                }
-            }
-        };
+        let zset = self.get_mut_zset_or_insert(key)?;
         zset.add(score, member)
             .map_err(|e| RedisError::ZsetError(e))
     }
 
     pub fn z_rank(&mut self, key: &String, member: &String) -> Result<Option<usize>, RedisError> {
-        let zset = loop {
-            match self.get_mut_zset(key)? {
-                Some(zset) => break zset,
-                None => {
-                    self.store.insert(key.to_string(), Value::Zset(Zset::new()));
-                }
-            }
+        let Some(zset) = self.get_mut_zset(key)? else {
+            return Ok(None);
         };
         Ok(zset.rank(member))
+    }
+
+    pub fn z_range(
+        &mut self,
+        key: &String,
+        start: usize,
+        end: usize,
+    ) -> Result<Vec<Member>, RedisError> {
+        let Some(zset) = self.get_mut_zset(key)? else {
+            return Ok(Vec::new());
+        };
+        Ok(zset.range(start, end))
     }
 
     pub fn incr(&mut self, key: &str) -> Result<u64, RedisError> {
