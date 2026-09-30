@@ -496,6 +496,23 @@ impl Redis {
             .map_err(|e| RedisError::ZsetError(e))
     }
 
+    pub fn z_rank(
+        &mut self,
+        key: &String,
+        score: f64,
+        member: &String,
+    ) -> Result<Option<usize>, RedisError> {
+        let zset = loop {
+            match self.get_mut_zset(key)? {
+                Some(zset) => break zset,
+                None => {
+                    self.store.insert(key.to_string(), Value::Zset(Zset::new()));
+                }
+            }
+        };
+        Ok(zset.rank(score, member))
+    }
+
     pub fn incr(&mut self, key: &str) -> Result<u64, RedisError> {
         match self.get_mut_number(key)? {
             Some(num) => {

@@ -598,6 +598,9 @@ impl Handler {
             [cmd, key, score, member] if cmd.eq_ignore_ascii_case("ZADD") => {
                 self.handle_zadd(stream, key, score, member)
             }
+            [cmd, key, score, member] if cmd.eq_ignore_ascii_case("ZRANK") => {
+                self.handle_zrank(stream, key, score, member)
+            }
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
             }
@@ -1206,6 +1209,22 @@ impl Handler {
             Err(e) => write!(stream, "-ERR: {}\r\n", e),
         }
     }
+    fn handle_zrank(
+        &mut self,
+        stream: &mut TcpStream,
+        key: &String,
+        score: &String,
+        member: &String,
+    ) -> io::Result<()> {
+        let score: f64 = score.parse().map_err(io_invalid_data)?;
+        let res = self.redis.lock().z_rank(key, score, member);
+        match res {
+            Ok(Some(r)) => write!(stream, ":{}\r\n", r),
+            Ok(None) => write!(stream, ":-1\r\n"),
+            Err(e) => write!(stream, "-ERR: {}", e),
+        }
+    }
+
     fn cleanup_pubsub(&mut self) {
         if self.pubsub_tx.is_some() {
             self.pubsub_tx.take();

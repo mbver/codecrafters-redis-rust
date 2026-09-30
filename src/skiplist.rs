@@ -71,6 +71,22 @@ impl<T: Ord> SkipList<T> {
         false
     }
 
+    pub fn rank(&self, target: &T) -> Option<usize> {
+        let mut rank = 0;
+        let mut cur = self.head;
+        while let Some(p) = unsafe { cur.as_ref().next[0] } {
+            match unsafe { p.as_ref().value.as_ref().unwrap() }.cmp(target) {
+                Ordering::Less => {
+                    rank += 1;
+                    cur = p;
+                }
+                Ordering::Equal => return Some(rank),
+                Ordering::Greater => break,
+            }
+        }
+        None
+    }
+
     pub fn insert(&mut self, value: T) {
         let predecesors = self.find_predecessors(&value);
 
