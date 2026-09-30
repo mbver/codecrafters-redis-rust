@@ -1218,7 +1218,7 @@ impl Handler {
         let res = self.redis.lock().z_rank(key, member);
         match res {
             Ok(Some(r)) => write!(stream, ":{}\r\n", r),
-            Ok(None) => write!(stream, ":-1\r\n"),
+            Ok(None) => write!(stream, "$-1\r\n"),
             Err(e) => write!(stream, "-ERR: {}", e),
         }
     }
