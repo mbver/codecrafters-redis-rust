@@ -80,13 +80,14 @@ impl Zset {
         Ok(self.skiplist.len() - prev_len)
     }
 
-    pub fn rank(&self, score: f64, member: &str) -> Option<usize> {
-        if score.is_nan() {
+    pub fn rank(&self, member: &str) -> Option<usize> {
+        let Some(score) = self.dict.get(member) else {
             return None;
-        }
+        };
+
         self.skiplist.rank(&Member {
             name: member.to_string(),
-            score,
+            score: *score,
         })
     }
 }

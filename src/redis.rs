@@ -496,12 +496,7 @@ impl Redis {
             .map_err(|e| RedisError::ZsetError(e))
     }
 
-    pub fn z_rank(
-        &mut self,
-        key: &String,
-        score: f64,
-        member: &String,
-    ) -> Result<Option<usize>, RedisError> {
+    pub fn z_rank(&mut self, key: &String, member: &String) -> Result<Option<usize>, RedisError> {
         let zset = loop {
             match self.get_mut_zset(key)? {
                 Some(zset) => break zset,
@@ -510,7 +505,7 @@ impl Redis {
                 }
             }
         };
-        Ok(zset.rank(score, member))
+        Ok(zset.rank(member))
     }
 
     pub fn incr(&mut self, key: &str) -> Result<u64, RedisError> {
