@@ -1232,8 +1232,8 @@ impl Handler {
         start: &String,
         end: &String,
     ) -> io::Result<()> {
-        let start: usize = start.parse().map_err(io_invalid_data)?;
-        let end: usize = end.parse().map_err(io_invalid_data)?;
+        let start: isize = start.parse().map_err(io_invalid_data)?;
+        let end: isize = end.parse().map_err(io_invalid_data)?;
         let res = self.redis.lock().z_range(key, start, end);
         match res {
             Ok(v) => {

@@ -521,8 +521,8 @@ impl Redis {
     pub fn z_range(
         &mut self,
         key: &String,
-        start: usize,
-        end: usize,
+        start: isize,
+        end: isize,
     ) -> Result<Vec<Member>, RedisError> {
         let Some(zset) = self.get_mut_zset(key)? else {
             return Ok(Vec::new());

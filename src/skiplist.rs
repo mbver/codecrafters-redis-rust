@@ -106,11 +106,20 @@ impl<T: Ord> SkipList<T> {
         })
     }
 
+    fn normalize_index(&self, idx: isize) -> usize {
+        if idx < 0 {
+            (idx + self.len() as isize).max(0) as usize
+        } else {
+            idx as usize
+        }
+    }
     // TODO: add span so we can search from highest level
-    pub fn range(&self, start: usize, end: usize) -> Vec<T>
+    pub fn range(&self, start: isize, end: isize) -> Vec<T>
     where
         T: Clone,
     {
+        let start = self.normalize_index(start);
+        let end = self.normalize_index(end);
         self.iter()
             .skip(start)
             .take(end.saturating_add(1).saturating_sub(start)) // end is inclusive

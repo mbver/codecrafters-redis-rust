@@ -91,7 +91,7 @@ impl Zset {
         })
     }
 
-    pub fn range(&self, start: usize, end: usize) -> Vec<Member> {
+    pub fn range(&self, start: isize, end: isize) -> Vec<Member> {
         self.skiplist.range(start, end)
     }
 }
