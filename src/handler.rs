@@ -846,6 +846,7 @@ impl Handler {
                 Some(Value::String(_)) => "string",
                 Some(Value::List(_)) => "list",
                 Some(Value::Stream(_)) => "stream",
+                Some(Value::Zset(_)) => "zset",
                 None => "none",
             }
         };
@@ -1198,7 +1199,12 @@ impl Handler {
         score: &String,
         member: &String,
     ) -> io::Result<()> {
-        stream.write_all(b":1\r\n")
+        let score: f64 = score.parse().map_err(io_invalid_data)?;
+        let res = self.redis.lock().z_add(key, score, member);
+        match res {
+            Ok(size) => write!(stream, ":{}\r\n", size),
+            Err(e) => write!(stream, "-ERR: {}\r\n", e),
+        }
     }
     fn cleanup_pubsub(&mut self) {
         if self.pubsub_tx.is_some() {

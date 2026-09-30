@@ -16,6 +16,8 @@ pub struct SkipList<T> {
     rng: u64,
 }
 
+unsafe impl<T: Send> Send for SkipList<T> {}
+
 impl<T: Ord> SkipList<T> {
     pub fn new() -> Self {
         let head = Box::new(Node {

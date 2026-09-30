@@ -9,7 +9,10 @@ use std::{
     u64,
 };
 
-use crate::pubsub::{PubSubRegistry, WriteMsg};
+use crate::{
+    pubsub::{PubSubRegistry, WriteMsg},
+    zset::{Zset, ZsetError},
+};
 
 #[derive(Debug)]
 pub enum RedisError {
@@ -18,6 +21,7 @@ pub enum RedisError {
     StreamIdParseError,
     InvalidStreamId(String),
     WriteAofError(io::Error),
+    ZsetError(ZsetError),
 }
 
 impl Display for RedisError {
@@ -28,6 +32,7 @@ impl Display for RedisError {
             RedisError::StreamIdParseError => write!(f, "stream id parse error"),
             RedisError::InvalidStreamId(e) => write!(f, "{e}"),
             RedisError::WriteAofError(e) => write!(f, "{e}"),
+            RedisError::ZsetError(e) => write!(f, "{e}"),
         }
     }
 }
@@ -180,12 +185,12 @@ impl Stream {
     }
 }
 
-#[derive(Clone)]
 pub enum Value {
     Integer(u64),
     String(String),
     List(VecDeque<String>),
     Stream(Stream),
+    Zset(Zset),
 }
 
 pub struct Redis {
@@ -292,6 +297,14 @@ impl Redis {
     fn get_mut_number(&mut self, key: &str) -> Result<Option<&mut u64>, RedisError> {
         match self.get_mut_value(key) {
             Some(Value::Integer(i)) => Ok(Some(i)),
+            Some(_) => Err(RedisError::WrongType),
+            None => Ok(None),
+        }
+    }
+
+    fn get_mut_zset(&mut self, key: &str) -> Result<Option<&mut Zset>, RedisError> {
+        match self.get_mut_value(key) {
+            Some(Value::Zset(zset)) => Ok(Some(zset)),
             Some(_) => Err(RedisError::WrongType),
             None => Ok(None),
         }
@@ -463,6 +476,24 @@ impl Redis {
             result.push((key.to_string(), entries));
         }
         Ok(result)
+    }
+
+    pub fn z_add(
+        &mut self,
+        key: &String,
+        score: f64,
+        member: &String,
+    ) -> Result<usize, RedisError> {
+        let zset = loop {
+            match self.get_mut_zset(key)? {
+                Some(zset) => break zset,
+                None => {
+                    self.store.insert(key.to_string(), Value::Zset(Zset::new()));
+                }
+            }
+        };
+        zset.add(score, member)
+            .map_err(|e| RedisError::ZsetError(e))
     }
 
     pub fn incr(&mut self, key: &str) -> Result<u64, RedisError> {
