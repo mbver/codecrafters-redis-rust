@@ -398,7 +398,7 @@ impl Redis {
         if start >= l.len() {
             return Vec::new();
         }
-        println!("========== pass 2");
+        println!("========== pass  2");
         let end = end.min(l.len() - 1);
         println!("=========== pass 3: end: {end}");
         l.range(start..=end).cloned().collect()
