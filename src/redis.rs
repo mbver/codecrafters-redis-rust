@@ -10,7 +10,7 @@ use std::{
 };
 
 use crate::{
-    geospatial::{encode, validate},
+    geospatial::{GeoPoint, decode, encode, validate},
     pubsub::{PubSubRegistry, WriteMsg},
     zset::{Member, Zset, ZsetError},
 };
@@ -565,6 +565,17 @@ impl Redis {
         }
         let score = encode(longitude, latitude) as f64;
         self.z_add(key, score, location)
+    }
+
+    pub fn geo_pos(
+        &mut self,
+        key: &String,
+        location: &String,
+    ) -> Result<Option<GeoPoint>, RedisError> {
+        let score = self.z_score(key, location)?;
+        let Some(score) = score else { return Ok(None) };
+        let point = decode(score as u64);
+        Ok(Some(point))
     }
 
     pub fn incr(&mut self, key: &str) -> Result<u64, RedisError> {

@@ -80,10 +80,10 @@ pub fn encode(longitude: f64, latitude: f64) -> u64 {
 }
 
 pub struct GeoPoint {
-    longitude: f64,
-    latitude: f64,
+    pub longitude: f64,
+    pub latitude: f64,
 }
-fn decode(code: u64) -> GeoPoint {
+pub fn decode(code: u64) -> GeoPoint {
     let (x, y) = deinterleave(code);
     GeoPoint {
         longitude: denormalize(x, MIN_LONGITUDE, MAX_LONGITUDE),

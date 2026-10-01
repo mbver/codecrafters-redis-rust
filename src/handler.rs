@@ -614,6 +614,9 @@ impl Handler {
             [cmd, key, longitude, latitude, location] if cmd.eq_ignore_ascii_case("GEOADD") => {
                 self.handle_geoadd(stream, key, longitude, latitude, location)
             }
+            [cmd, key, location] if cmd.eq_ignore_ascii_case("GEOPOS") => {
+                self.handle_geopos(stream, key, location)
+            }
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
             }
@@ -1327,6 +1330,24 @@ impl Handler {
             }
         }
     }
+    fn handle_geopos(
+        &mut self,
+        stream: &mut TcpStream,
+        key: &String,
+        location: &String,
+    ) -> io::Result<()> {
+        let res = self.redis.lock().geo_pos(key, location);
+        match res {
+            Ok(Some(point)) => {
+                let (longitude, latitude) =
+                    (point.longitude.to_string(), point.latitude.to_string());
+                stream.write_all(&encode_slice(&[longitude, latitude]))
+            }
+            Ok(None) => stream.write_all(b"*-1\r\n"),
+            Err(e) => write_err(stream, e),
+        }
+    }
+
     fn cleanup_pubsub(&mut self) {
         if self.pubsub_tx.is_some() {
             self.pubsub_tx.take();
