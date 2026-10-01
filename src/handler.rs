@@ -1274,7 +1274,7 @@ impl Handler {
             Ok(Some(score)) => {
                 let score = score.to_string();
                 println!("======== score: {}, {}", score.len(), score);
-                write!(stream, "${}\r\n:{}\r\n", score.len(), score)
+                write!(stream, "${}\r\n{}\r\n", score.len(), score)
             }
             Ok(None) => {
                 write!(stream, "$-1\r\n")
