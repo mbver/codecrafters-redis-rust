@@ -390,14 +390,17 @@ impl Redis {
         };
         let start = normalize_idx(start, l.len());
         let end = normalize_idx(end, l.len());
+        println!("========= start: {start}, end: {end}");
         if start >= end {
             return Vec::new();
         }
-
+        println!("=========== pass 1");
         if start >= l.len() {
             return Vec::new();
         }
+        println!("========== pass 2");
         let end = end.min(l.len() - 1);
+        println!("=========== pass 3: end: {end}");
         l.range(start..=end).cloned().collect()
     }
 
