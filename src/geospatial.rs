@@ -2,7 +2,7 @@ const MIN_LATITUDE: f64 = -85.05112878;
 const MAX_LATITUDE: f64 = 85.05112878;
 const MIN_LONGITUDE: f64 = -180.0;
 const MAX_LONGITUDE: f64 = 180.0;
-
+const EARTH_RADIUS_METER: f64 = 6372797.560856;
 pub fn validate(longitude: f64, latitude: f64) -> bool {
     longitude >= MIN_LONGITUDE
         && longitude <= MAX_LONGITUDE
@@ -83,6 +83,21 @@ pub struct GeoPoint {
     pub longitude: f64,
     pub latitude: f64,
 }
+
+impl GeoPoint {
+    pub fn dist(&self, other: Self) -> f64 {
+        let v = ((other.longitude.to_radians() - self.longitude.to_radians()) / 2.0).sin();
+        if v == 0.0 {
+            return EARTH_RADIUS_METER
+                * ((other.latitude.to_radians() - self.latitude.to_radians()).abs());
+        }
+        let u = ((other.latitude.to_radians() - self.latitude.to_radians()) / 2.0).sin();
+        let a =
+            u * u + self.latitude.to_radians().cos() * other.latitude.to_radians().cos() * v * v;
+        return 2.0 * EARTH_RADIUS_METER * a.sqrt().asin();
+    }
+}
+
 pub fn decode(code: u64) -> GeoPoint {
     let (x, y) = deinterleave(code);
     GeoPoint {

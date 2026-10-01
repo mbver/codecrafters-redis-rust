@@ -574,6 +574,7 @@ impl Redis {
     ) -> Result<Vec<Option<GeoPoint>>, RedisError> {
         let mut result = Vec::with_capacity(locations.len());
         let Some(zset) = self.get_mut_zset(key)? else {
+            // TODO: do we need mut?
             for _ in locations {
                 result.push(None);
             }
@@ -587,6 +588,25 @@ impl Redis {
             result.push(Some(decode(score as u64)));
         }
         Ok(result)
+    }
+
+    pub fn geo_dist(
+        &mut self,
+        key: &String,
+        first: &String,
+        second: &String,
+    ) -> Result<Option<f64>, RedisError> {
+        let Some(zset) = self.get_mut_zset(key)? else {
+            return Ok(None);
+        };
+        let Some(first_score) = zset.score(first) else {
+            return Ok(None);
+        };
+        let Some(second_score) = zset.score(second) else {
+            return Ok(None);
+        };
+        let dist = decode(first_score as u64).dist(decode(second_score as u64));
+        Ok(Some(dist))
     }
 
     pub fn incr(&mut self, key: &str) -> Result<u64, RedisError> {

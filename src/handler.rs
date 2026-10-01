@@ -617,6 +617,9 @@ impl Handler {
             [cmd, key, locations @ ..] if cmd.eq_ignore_ascii_case("GEOPOS") => {
                 self.handle_geopos(stream, key, locations)
             }
+            [cmd, key, first, second] if cmd.eq_ignore_ascii_case("GEODIST") => {
+                self.handle_geodist(stream, key, first, second)
+            }
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
             }
@@ -1339,6 +1342,24 @@ impl Handler {
         let res = self.redis.lock().geo_pos(key, locations);
         match res {
             Ok(points) => stream.write_all(&encode_geopos_res(&points)),
+            Err(e) => write_err(stream, e),
+        }
+    }
+
+    fn handle_geodist(
+        &mut self,
+        stream: &mut TcpStream,
+        key: &String,
+        first: &String,
+        second: &String,
+    ) -> io::Result<()> {
+        let res = self.redis.lock().geo_dist(key, first, second);
+        match res {
+            Ok(Some(dist)) => {
+                let dist = dist.to_string();
+                write!(stream, "${}\r\n{}\r\n", dist.len(), dist)
+            }
+            Ok(None) => stream.write_all(b"$-1\r\n"),
             Err(e) => write_err(stream, e),
         }
     }
