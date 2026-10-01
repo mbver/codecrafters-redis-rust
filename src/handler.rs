@@ -612,7 +612,6 @@ impl Handler {
                 self.handle_zremove(stream, key, name)
             }
             [cmd, key, longitude, latitude, location] if cmd.eq_ignore_ascii_case("GEOADD") => {
-                println!("===== gonna call geoadd");
                 self.handle_geoadd(stream, key, longitude, latitude, location)
             }
             _ => {
@@ -1309,6 +1308,7 @@ impl Handler {
         latitude: &String,
         location: &String,
     ) -> io::Result<()> {
+        println!("======= handle geoadd");
         let longitude: f64 = longitude.parse().map_err(io_invalid_data)?;
         let latitude: f64 = latitude.parse().map_err(io_invalid_data)?;
         let res = self

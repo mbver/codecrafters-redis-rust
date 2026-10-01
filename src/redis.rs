@@ -561,6 +561,7 @@ impl Redis {
         location: &String,
     ) -> Result<usize, RedisError> {
         if !validate(longitude, latitude) {
+            println!("=========== invalid argument??");
             return Err(RedisError::WrongArgument); // TODO: craft more descriptive error for debugging
         }
         let score = encode(longitude, latitude) as f64;
