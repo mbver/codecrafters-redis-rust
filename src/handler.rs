@@ -612,6 +612,7 @@ impl Handler {
                 self.handle_zremove(stream, key, name)
             }
             [cmd, key, longitude, latitude, location] if cmd.eq_ignore_ascii_case("GEOADD") => {
+                println!("===== gonna call geoadd");
                 self.handle_geoadd(stream, key, longitude, latitude, location)
             }
             _ => {
