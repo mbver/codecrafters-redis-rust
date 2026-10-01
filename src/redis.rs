@@ -572,10 +572,13 @@ impl Redis {
         key: &String,
         locations: &[String],
     ) -> Result<Vec<Option<GeoPoint>>, RedisError> {
-        let Some(zset) = self.get_mut_zset(key)? else {
-            return Ok(vec![None]);
-        };
         let mut result = Vec::with_capacity(locations.len());
+        let Some(zset) = self.get_mut_zset(key)? else {
+            for _ in locations {
+                result.push(None);
+            }
+            return Ok(result);
+        };
         for location in locations {
             let Some(score) = zset.score(location) else {
                 result.push(None);
