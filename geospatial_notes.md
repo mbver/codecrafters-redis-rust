@@ -1,0 +1,13 @@
+- the longitude and latitude are converted into a score
+- the geospatial coordinate is stored in a zset. a Member is a score and the location name
+- on GEOADD command
+  - validate coordinates
+  - encode them to a score
+  - insert member into zset
+- on GEOPOS command
+  - retrieve the member from zset
+  - decode the score
+  - send long/lat back
+- on GEOSEARCH command
+  - calculate the distance of from the list
+  - returns only those within a radius

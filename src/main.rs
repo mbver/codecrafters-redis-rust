@@ -22,6 +22,8 @@ mod skiplist;
 
 mod zset;
 
+mod geospatial;
+
 use crate::config::{Config, parse_args};
 use crate::handler::{
     Handler, MasterState, RedisShared, Role, SlaveInfo, parse_bulk_len, readline_exact,
