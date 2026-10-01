@@ -388,10 +388,12 @@ impl Redis {
             // TODO: handle error
             return Vec::new();
         };
+        // both indices are inclusive
         let start = normalize_idx(start, l.len());
         let end = normalize_idx(end, l.len());
+
         println!("========= start: {start}, end: {end}");
-        if start >= end {
+        if start > end {
             return Vec::new();
         }
         println!("=========== pass 1");
@@ -600,7 +602,32 @@ impl Redis {
     }
 }
 
+// start index is inclusive
 fn normalize_idx(idx: isize, length: usize) -> usize {
     let idx = if idx < 0 { length as isize + idx } else { idx };
     idx.max(0) as usize
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_lrange() {
+        let mut redis = Redis::new();
+        let _ = redis.rpush(
+            "orange",
+            &[
+                "grape".to_string(),
+                "pineaple".to_string(),
+                "mango".to_string(),
+                "pear".to_string(),
+                "apple".to_string(),
+            ],
+        );
+        let res = redis.lpop("orange", 4);
+        println!("========== lpop: {:?}", res);
+        let res = redis.lrange("orange", 0, -1);
+        println!("====== res: {:?}", res);
+    }
 }
