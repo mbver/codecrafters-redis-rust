@@ -3,8 +3,11 @@ const MAX_LATITUDE: f64 = 85.05112878;
 const MIN_LONGITUDE: f64 = -180.0;
 const MAX_LONGITUDE: f64 = 180.0;
 
-pub fn validate(lon: f64, lat: f64) -> bool {
-    lon >= MIN_LONGITUDE && lon <= MAX_LONGITUDE && lat >= MIN_LATITUDE && lat <= MAX_LATITUDE
+pub fn validate(longitude: f64, latitude: f64) -> bool {
+    longitude >= MIN_LONGITUDE
+        && longitude <= MAX_LONGITUDE
+        && latitude >= MIN_LATITUDE
+        && latitude <= MAX_LATITUDE
 }
 
 // bit dilation with bitshifting technique: abcd -> 0a0b0c0d

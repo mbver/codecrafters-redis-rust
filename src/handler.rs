@@ -1308,7 +1308,6 @@ impl Handler {
         latitude: &String,
         location: &String,
     ) -> io::Result<()> {
-        println!("======= handle geoadd");
         let longitude: f64 = longitude.parse().map_err(io_invalid_data)?;
         let latitude: f64 = latitude.parse().map_err(io_invalid_data)?;
         let res = self
