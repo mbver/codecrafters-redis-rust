@@ -4,7 +4,7 @@ const MIN_LONGITUDE: f64 = -180.0;
 const MAX_LONGITUDE: f64 = 180.0;
 
 pub fn validate(lon: f64, lat: f64) -> bool {
-    lon >= -MIN_LONGITUDE && lon <= MAX_LONGITUDE && lat >= MIN_LATITUDE && lat <= MAX_LATITUDE
+    lon >= MIN_LONGITUDE && lon <= MAX_LONGITUDE && lat >= MIN_LATITUDE && lat <= MAX_LATITUDE
 }
 
 // bit dilation with bitshifting technique: abcd -> 0a0b0c0d
