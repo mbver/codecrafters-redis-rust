@@ -10,6 +10,7 @@ use std::{
 };
 
 use crate::{
+    geospatial::{encode, validate},
     pubsub::{PubSubRegistry, WriteMsg},
     zset::{Member, Zset, ZsetError},
 };
@@ -551,6 +552,21 @@ impl Redis {
         };
         Ok(zset.remove(name))
     }
+
+    pub fn geo_add(
+        &mut self,
+        key: &String,
+        longitude: f64,
+        latitude: f64,
+        location: &String,
+    ) -> Result<usize, RedisError> {
+        if !validate(longitude, latitude) {
+            return Err(RedisError::WrongArgument); // TODO: craft more descriptive error for debugging
+        }
+        let score = encode(longitude, latitude) as f64;
+        self.z_add(key, score, location)
+    }
+
     pub fn incr(&mut self, key: &str) -> Result<u64, RedisError> {
         match self.get_mut_number(key)? {
             Some(num) => {

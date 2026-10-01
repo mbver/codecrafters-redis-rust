@@ -16,7 +16,7 @@ use std::fmt::Write as FmtWrite;
 
 use crate::config::Config;
 use crate::fatal;
-use crate::helper::{encode_slice, write_slice_resp};
+use crate::helper::{encode_slice, write_err, write_slice_resp};
 use crate::helper::{io_invalid_data, is_allowed_in_subscribed_mode};
 use crate::parser::{Command, Parser};
 use crate::pubsub::WriteMsg;
@@ -610,6 +610,9 @@ impl Handler {
             }
             [cmd, key, name] if cmd.eq_ignore_ascii_case("ZREM") => {
                 self.handle_zremove(stream, key, name)
+            }
+            [cmd, key, longitude, latitude, location] if cmd.eq_ignore_ascii_case("GEOADD") => {
+                self.handle_geoadd(stream, key, longitude, latitude, location)
             }
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
@@ -1294,7 +1297,26 @@ impl Handler {
         match res {
             Ok(true) => stream.write_all(b":1\r\n"),
             Ok(false) => stream.write_all(b":0\r\n"),
-            Err(e) => write!(stream, "-ERR: {e}\r\n"),
+            Err(e) => write_err(stream, e),
+        }
+    }
+    fn handle_geoadd(
+        &mut self,
+        stream: &mut TcpStream,
+        key: &String,
+        longitude: &String,
+        latitude: &String,
+        location: &String,
+    ) -> io::Result<()> {
+        let longitude: f64 = longitude.parse().map_err(io_invalid_data)?;
+        let latitude: f64 = latitude.parse().map_err(io_invalid_data)?;
+        let res = self
+            .redis
+            .lock()
+            .geo_add(key, longitude, latitude, location);
+        match res {
+            Ok(n) => write!(stream, ":{}\r\n", n),
+            Err(e) => write_err(stream, e),
         }
     }
     fn cleanup_pubsub(&mut self) {

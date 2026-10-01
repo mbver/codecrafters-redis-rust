@@ -1,3 +1,4 @@
+use std::fmt;
 use std::io::Write;
 use std::{error::Error, io, net::TcpStream};
 pub fn io_invalid_data<E>(e: E) -> io::Error
@@ -41,4 +42,11 @@ pub fn encode_slice(command: &[String]) -> Vec<u8> {
         write!(&mut out, "${}\r\n{}\r\n", arg.len(), arg).unwrap();
     }
     out
+}
+
+pub fn write_err<E>(stream: &mut TcpStream, e: E) -> io::Result<()>
+where
+    E: fmt::Display,
+{
+    write!(stream, "-ERR {e}\r\n")
 }
