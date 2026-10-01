@@ -392,17 +392,13 @@ impl Redis {
         let start = normalize_idx(start, l.len());
         let end = normalize_idx(end, l.len());
 
-        println!("========= start: {start}, end: {end}");
         if start > end {
             return Vec::new();
         }
-        println!("=========== pass 1");
         if start >= l.len() {
             return Vec::new();
         }
-        println!("========== pass  2");
         let end = end.min(l.len() - 1);
-        println!("=========== pass 3: end: {end}");
         l.range(start..=end).cloned().collect()
     }
 
@@ -615,7 +611,7 @@ mod tests {
     #[test]
     fn test_lrange() {
         let mut redis = Redis::new();
-        let _ = redis.rpush(
+        let res = redis.rpush(
             "orange",
             &[
                 "grape".to_string(),
@@ -625,9 +621,18 @@ mod tests {
                 "apple".to_string(),
             ],
         );
+        assert!(matches!(res, Ok(5)));
         let res = redis.lpop("orange", 4);
-        println!("========== lpop: {:?}", res);
+        assert!(res.is_ok());
+        let res = res.unwrap();
+        let expected = vec![
+            "grape".to_string(),
+            "pineaple".to_string(),
+            "mango".to_string(),
+            "pear".to_string(),
+        ];
+        assert_eq!(res, Some(expected));
         let res = redis.lrange("orange", 0, -1);
-        println!("====== res: {:?}", res);
+        assert_eq!(res, vec!["apple".to_string()])
     }
 }
