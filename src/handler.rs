@@ -605,6 +605,9 @@ impl Handler {
                 self.handle_zrange(stream, key, start, end)
             }
             [cmd, key] if cmd.eq_ignore_ascii_case("ZCARD") => self.handle_zcard(stream, key),
+            [cmd, key, name] if cmd.eq_ignore_ascii_case("ZSCORE") => {
+                self.handle_zscore(stream, key, name)
+            }
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
             }
@@ -1256,6 +1259,24 @@ impl Handler {
             }
             Ok(None) => {
                 write!(stream, ":{}\r\n", 0)
+            }
+            Err(e) => write!(stream, "-ERR: {}\r\n", e),
+        }
+    }
+    fn handle_zscore(
+        &mut self,
+        stream: &mut TcpStream,
+        key: &String,
+        name: &String,
+    ) -> io::Result<()> {
+        let res = self.redis.lock().z_score(key, name);
+        match res {
+            Ok(Some(score)) => {
+                let score = score.to_string();
+                write!(stream, "${}\r\n:{}\r\n", score.len(), score)
+            }
+            Ok(None) => {
+                write!(stream, "$-1\r\n")
             }
             Err(e) => write!(stream, "-ERR: {}\r\n", e),
         }

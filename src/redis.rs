@@ -537,6 +537,14 @@ impl Redis {
         };
         Ok(Some(zset.card()))
     }
+
+    pub fn z_score(&mut self, key: &String, name: &String) -> Result<Option<f64>, RedisError> {
+        let Some(zset) = self.get_mut_zset(key)? else {
+            return Ok(None);
+        };
+        Ok(zset.score(name))
+    }
+
     pub fn incr(&mut self, key: &str) -> Result<u64, RedisError> {
         match self.get_mut_number(key)? {
             Some(num) => {

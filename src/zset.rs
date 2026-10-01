@@ -98,4 +98,8 @@ impl Zset {
     pub fn card(&self) -> usize {
         self.skiplist.len()
     }
+
+    pub fn score(&self, name: &str) -> Option<f64> {
+        self.dict.get(name).cloned()
+    }
 }
