@@ -102,4 +102,14 @@ impl Zset {
     pub fn score(&self, name: &str) -> Option<f64> {
         self.dict.get(name).cloned()
     }
+
+    pub fn remove(&mut self, name: &str) -> bool {
+        let Some(score) = self.dict.get(name) else {
+            return false;
+        };
+        self.skiplist.remove(&Member {
+            name: name.to_string(),
+            score: *score,
+        })
+    }
 }

@@ -608,6 +608,9 @@ impl Handler {
             [cmd, key, name] if cmd.eq_ignore_ascii_case("ZSCORE") => {
                 self.handle_zscore(stream, key, name)
             }
+            [cmd, key, name] if cmd.eq_ignore_ascii_case("ZREM") => {
+                self.handle_zremove(stream, key, name)
+            }
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
             }
@@ -1279,6 +1282,19 @@ impl Handler {
                 write!(stream, "$-1\r\n")
             }
             Err(e) => write!(stream, "-ERR: {}\r\n", e),
+        }
+    }
+    fn handle_zremove(
+        &mut self,
+        stream: &mut TcpStream,
+        key: &String,
+        name: &String,
+    ) -> io::Result<()> {
+        let res = self.redis.lock().z_remove(key, name);
+        match res {
+            Ok(true) => stream.write_all(b":1\r\n"),
+            Ok(false) => stream.write_all(b":0\r\n"),
+            Err(e) => write!(stream, "-ERR: {e}\r\n"),
         }
     }
     fn cleanup_pubsub(&mut self) {

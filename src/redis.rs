@@ -546,6 +546,12 @@ impl Redis {
         Ok(zset.score(name))
     }
 
+    pub fn z_remove(&mut self, key: &String, name: &String) -> Result<bool, RedisError> {
+        let Some(zset) = self.get_mut_zset(key)? else {
+            return Ok(false);
+        };
+        Ok(zset.remove(name))
+    }
     pub fn incr(&mut self, key: &str) -> Result<u64, RedisError> {
         match self.get_mut_number(key)? {
             Some(num) => {
