@@ -656,4 +656,24 @@ mod tests {
         let res = redis.lrange("orange", 0, -1);
         assert_eq!(res, vec!["apple".to_string()])
     }
+
+    #[test]
+    fn test_geoadd() {
+        let mut redis = Redis::new();
+        let res = redis.geo_add(
+            &"blueberry".to_string(),
+            36.604650524882196,
+            -28.48608690301177,
+            &"apple".to_string(),
+        );
+        assert!(res.is_ok());
+        let n = res.unwrap();
+        assert_eq!(n, 1);
+        let res = redis.z_score(&"blueberry".to_string(), &"apple".to_string()); // TODO: change to &str API
+        assert!(res.is_ok());
+        let score = res.unwrap();
+        assert!(score.is_some());
+        let score = score.unwrap();
+        assert_eq!(score, 2596566547861250.0);
+    }
 }

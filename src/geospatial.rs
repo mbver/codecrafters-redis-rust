@@ -56,11 +56,11 @@ fn compact_bits(v: u64) -> u32 {
 }
 
 fn interleave(x: u32, y: u32) -> u64 {
-    dilate_bits(x) | (dilate_bits(y) << 1)
+    (dilate_bits(x) << 1) | dilate_bits(y)
 }
 
 fn deinterleave(code: u64) -> (u32, u32) {
-    (compact_bits(code), compact_bits(code >> 1))
+    (compact_bits(code >> 1), compact_bits(code))
 }
 
 fn normalize(x: f64, min: f64, max: f64) -> f64 {
