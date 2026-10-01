@@ -11,7 +11,6 @@ use std::{
 
 use crate::{
     pubsub::{PubSubRegistry, WriteMsg},
-    rdb::RdbReader,
     zset::{Member, Zset, ZsetError},
 };
 

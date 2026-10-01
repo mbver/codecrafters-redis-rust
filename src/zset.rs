@@ -1,9 +1,6 @@
-use std::{collections::HashMap, fmt::Display, mem};
+use std::{collections::HashMap, fmt::Display};
 
-use crate::{
-    skiplist::{self, SkipList},
-    zset,
-};
+use crate::skiplist::SkipList;
 
 #[derive(Clone)]
 pub struct Member {

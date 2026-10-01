@@ -1,7 +1,5 @@
 use std::{cmp::Ordering, ptr::NonNull};
 
-use crate::zset::Member;
-
 const MAX_LEVEL: usize = 32;
 
 type Link<T> = Option<NonNull<Node<T>>>;
@@ -51,26 +49,6 @@ impl<T: Ord> SkipList<T> {
             predecessors[lvl] = cur
         }
         predecessors
-    }
-
-    // we don't compare with cur's value because the head has no value
-    // so it will check next value. so the next node must check its next value
-    pub fn contains(&self, target: &T) -> bool {
-        let mut cur = self.head;
-        for lvl in (0..=self.level).rev() {
-            loop {
-                let next = unsafe { cur.as_ref().next[lvl] };
-                let Some(p) = next else {
-                    break;
-                };
-                match unsafe { p.as_ref().value.as_ref().unwrap() }.cmp(target) {
-                    Ordering::Less => cur = p, // move horizontally on the same level
-                    Ordering::Equal => return true,
-                    Ordering::Greater => break, // move vertically down 1 level
-                };
-            }
-        }
-        false
     }
 
     // TODO: add span so we can search from highest level
@@ -188,10 +166,6 @@ impl<T: Ord> SkipList<T> {
     }
     pub fn len(&self) -> usize {
         self.len
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len == 0
     }
 
     fn next_rand(&mut self) -> u64 {
