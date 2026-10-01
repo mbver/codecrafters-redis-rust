@@ -1316,7 +1316,15 @@ impl Handler {
             .geo_add(key, longitude, latitude, location);
         match res {
             Ok(n) => write!(stream, ":{}\r\n", n),
-            Err(e) => write_err(stream, e),
+            Err(e) => {
+                let e = match e {
+                    RedisError::WrongArgument => {
+                        format!("ERR invalid longitude,latitude pair {longitude}, {latitude}")
+                    }
+                    e => format!("{e}"),
+                };
+                write_err(stream, e)
+            }
         }
     }
     fn cleanup_pubsub(&mut self) {
