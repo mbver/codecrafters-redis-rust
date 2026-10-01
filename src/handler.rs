@@ -1273,6 +1273,7 @@ impl Handler {
         match res {
             Ok(Some(score)) => {
                 let score = score.to_string();
+                println!("======== score: {}, {}", score.len(), score);
                 write!(stream, "${}\r\n:{}\r\n", score.len(), score)
             }
             Ok(None) => {
