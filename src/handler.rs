@@ -16,7 +16,7 @@ use std::fmt::Write as FmtWrite;
 
 use crate::config::Config;
 use crate::fatal;
-use crate::helper::{encode_slice, write_err, write_slice_resp};
+use crate::helper::{encode_geopos_res, encode_slice, write_err, write_slice_resp};
 use crate::helper::{io_invalid_data, is_allowed_in_subscribed_mode};
 use crate::parser::{Command, Parser};
 use crate::pubsub::WriteMsg;
@@ -614,8 +614,8 @@ impl Handler {
             [cmd, key, longitude, latitude, location] if cmd.eq_ignore_ascii_case("GEOADD") => {
                 self.handle_geoadd(stream, key, longitude, latitude, location)
             }
-            [cmd, key, location] if cmd.eq_ignore_ascii_case("GEOPOS") => {
-                self.handle_geopos(stream, key, location)
+            [cmd, key, locations @ ..] if cmd.eq_ignore_ascii_case("GEOPOS") => {
+                self.handle_geopos(stream, key, locations)
             }
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
@@ -1334,16 +1334,11 @@ impl Handler {
         &mut self,
         stream: &mut TcpStream,
         key: &String,
-        location: &String,
+        locations: &[String],
     ) -> io::Result<()> {
-        let res = self.redis.lock().geo_pos(key, location);
+        let res = self.redis.lock().geo_pos(key, locations);
         match res {
-            Ok(Some(point)) => {
-                let (longitude, latitude) =
-                    (point.longitude.to_string(), point.latitude.to_string());
-                stream.write_all(&encode_slice(&[longitude, latitude]))
-            }
-            Ok(None) => stream.write_all(b"*-1\r\n"),
+            Ok(points) => stream.write_all(&encode_geopos_res(&points)),
             Err(e) => write_err(stream, e),
         }
     }

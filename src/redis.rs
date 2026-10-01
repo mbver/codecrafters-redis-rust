@@ -570,12 +570,20 @@ impl Redis {
     pub fn geo_pos(
         &mut self,
         key: &String,
-        location: &String,
-    ) -> Result<Option<GeoPoint>, RedisError> {
-        let score = self.z_score(key, location)?;
-        let Some(score) = score else { return Ok(None) };
-        let point = decode(score as u64);
-        Ok(Some(point))
+        locations: &[String],
+    ) -> Result<Vec<Option<GeoPoint>>, RedisError> {
+        let Some(zset) = self.get_mut_zset(key)? else {
+            return Ok(vec![None]);
+        };
+        let mut result = Vec::with_capacity(locations.len());
+        for location in locations {
+            let Some(score) = zset.score(location) else {
+                result.push(None);
+                continue;
+            };
+            result.push(Some(decode(score as u64)));
+        }
+        Ok(result)
     }
 
     pub fn incr(&mut self, key: &str) -> Result<u64, RedisError> {

@@ -1,6 +1,8 @@
 use std::fmt;
 use std::io::Write;
 use std::{error::Error, io, net::TcpStream};
+
+use crate::geospatial::GeoPoint;
 pub fn io_invalid_data<E>(e: E) -> io::Error
 where
     E: Into<Box<dyn Error + Send + Sync>>,
@@ -40,6 +42,23 @@ pub fn encode_slice(command: &[String]) -> Vec<u8> {
     write!(&mut out, "*{}\r\n", command.len()).unwrap();
     for arg in command {
         write!(&mut out, "${}\r\n{}\r\n", arg.len(), arg).unwrap();
+    }
+    out
+}
+
+pub fn encode_geopos_res(points: &[Option<GeoPoint>]) -> Vec<u8> {
+    let mut out = Vec::new();
+    write!(&mut out, "*{}\r\n", points.len()).unwrap();
+    for point in points {
+        match point {
+            Some(p) => {
+                let (longitude, latitude) = (p.longitude.to_string(), p.latitude.to_string());
+                out.extend_from_slice(&encode_slice(&[longitude, latitude]));
+            }
+            None => {
+                write!(&mut out, "*-1\r\n").unwrap();
+            }
+        }
     }
     out
 }
