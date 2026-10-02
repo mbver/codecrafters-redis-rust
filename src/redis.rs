@@ -629,7 +629,6 @@ impl Redis {
         let end = zset.card() - 1;
         for Member { name, score } in zset.range(0, end as isize) {
             let point = decode(score as u64);
-            println!("====== dist: {}, now: {}", dist, center.dist(&point));
             if center.dist(&point) <= dist {
                 result.push(name.clone());
             }
@@ -800,6 +799,6 @@ mod tests {
         );
         assert!(res.is_ok());
         let res = res.unwrap();
-        println!("======== res: {:?}", res);
+        assert!(res.is_empty());
     }
 }
