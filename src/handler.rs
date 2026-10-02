@@ -14,6 +14,7 @@ use std::{
 
 use std::fmt::Write as FmtWrite;
 
+use crate::auth::{Auth, DEFAULT_USER};
 use crate::config::Config;
 use crate::fatal;
 use crate::helper::{encode_geopos_res, encode_slice, write_err, write_slice_resp};
@@ -271,10 +272,13 @@ pub struct Handler {
     id: u64,
     role: Role,
     redis: SharedRedis,
+    auth: Arc<Auth>,
     transaction: Option<Transaction>,
     watch_list: HashMap<String, u64>,
     config: Config,
     pubsub_tx: Option<Sender<WriteMsg>>,
+    user_name: String,
+    is_authenticated: bool,
 }
 
 fn is_write_command(command: &[String]) -> bool {
@@ -325,24 +329,50 @@ where
 }
 
 impl Handler {
-    pub fn new(id: u64, role: Role, redis: SharedRedis, config: Config) -> Self {
+    pub fn new(id: u64, role: Role, redis: SharedRedis, auth: Arc<Auth>, config: Config) -> Self {
         Self {
             id,
             role,
             redis,
+            auth,
             transaction: None,
             watch_list: HashMap::new(),
             config,
             pubsub_tx: None,
+            user_name: DEFAULT_USER.to_string(),
+            is_authenticated: false,
         }
     }
     pub fn handle(&mut self, stream: TcpStream) {
-        read_loop(stream, |stream, command| {
+        read_loop(stream, |mut stream, command| {
             let command: Vec<String> = command
                 .items
                 .iter()
                 .map(|b| String::from_utf8_lossy(b).to_string())
                 .collect();
+
+            // handle_auth login command first
+            // combining 2 if-let and conditional
+            if let [cmd, name, pwd] = command.as_slice()
+                && cmd.eq_ignore_ascii_case("AUTH")
+                && self.auth.auth(name, pwd)
+            {
+                self.is_authenticated = true;
+                self.user_name = name.to_string();
+            }
+            // check authetication later
+            if !self.is_authenticated && self.auth.default_auth() {
+                self.is_authenticated = true;
+                self.user_name = DEFAULT_USER.to_string(); // TODO: initial user name is redundant?
+            }
+            if !self.is_authenticated {
+                if let Err(e) = write_err(&mut stream, "-ERR: NOAUTH Authentication required.") {
+                    eprintln!("error writing to stream: {e}");
+                    return Next::Done;
+                }
+                return Next::Continue(stream);
+            }
+
             if self.pubsub_tx.is_some() {
                 return self.handle_subscribed(stream, command);
             }
@@ -453,6 +483,7 @@ impl Handler {
     }
 
     pub fn handle_replication(&mut self, stream: TcpStream) {
+        // AUTH: we don't check authentication in replication
         read_loop(stream, |mut stream, command| {
             self.handle_repl_command(command, &mut stream);
             Next::Continue(stream)
@@ -624,6 +655,11 @@ impl Handler {
                 if cmd.eq_ignore_ascii_case("GEOSEARCH") =>
             {
                 self.handle_geosearch(stream, key, mode, longitude, latitude, option, dist, unit)
+            }
+            [cmd, subcmd]
+                if cmd.eq_ignore_ascii_case("ACL") && subcmd.eq_ignore_ascii_case("WHOAMI") =>
+            {
+                self.handle_acl_whoami(stream)
             }
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
@@ -1400,6 +1436,15 @@ impl Handler {
             Err(e) => write_err(stream, e),
         }
     }
+    fn handle_acl_whoami(&mut self, stream: &mut TcpStream) -> io::Result<()> {
+        write!(
+            stream,
+            "${}\r\n{}\r\n",
+            self.user_name.len(),
+            &self.user_name
+        )
+    }
+
     fn cleanup_pubsub(&mut self) {
         if self.pubsub_tx.is_some() {
             self.pubsub_tx.take();

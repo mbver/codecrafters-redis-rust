@@ -24,6 +24,9 @@ mod zset;
 
 mod geospatial;
 
+mod auth;
+
+use crate::auth::Auth;
 use crate::config::{Config, parse_args};
 use crate::handler::{
     Handler, MasterState, RedisShared, Role, SlaveInfo, parse_bulk_len, readline_exact,
@@ -38,21 +41,33 @@ fn main() {
         Ok(redis) => redis,
         Err(_) => Arc::new(RedisShared::new()), // TODO: should handle the error?
     };
-
+    let auth = Arc::new(Auth::new());
     let role = match &config.replica_of {
         Some((host, port)) => {
             let id = id_gen.next_id();
-            start_replica(id, host, *port, config.port, redis.clone(), config.clone());
+            // AUTH HERE?
+            start_replica(
+                id,
+                host,
+                *port,
+                config.port,
+                redis.clone(),
+                auth.clone(),
+                config.clone(),
+            );
             Role::Slave(SlaveInfo { offset: 0 }) // TODO: slave info only applied in replication loop? it shouldn't be in main-loop? or replica shouldn't be in main-loop altogether?
         }
         None => Role::Master(Arc::new(MasterState::new())),
     };
 
     let listener = TcpListener::bind(format!("127.0.0.1:{}", config.port)).unwrap();
+    // AUTH? SHOULD NOT? default is not set anyway
+    // put AUTH here
     let mut replay_client = Handler::new(
         id_gen.next_id(),
         role.clone(),
         redis.clone(),
+        auth.clone(),
         config.clone(),
     );
 
@@ -74,10 +89,12 @@ fn main() {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
+                // AUTH: add auth here
                 let mut client = Handler::new(
                     id_gen.next_id(),
                     role.clone(),
                     redis.clone(),
+                    auth.clone(),
                     config.clone(),
                 );
                 std::thread::spawn(move || {
@@ -102,6 +119,7 @@ fn start_replica(
     port: u16,
     my_port: u16,
     redis: Arc<RedisShared>,
+    auth: Arc<Auth>,
     config: Config,
 ) {
     let Ok(Some(mut stream)) = ping(host, port) else {
@@ -113,7 +131,14 @@ fn start_replica(
     if send_psync(&mut stream, None, -1).is_err() {
         fatal("psync failed");
     }
-    let mut client = Handler::new(id, Role::Slave(SlaveInfo { offset: 0 }), redis, config);
+    // AUTH HERE?
+    let mut client = Handler::new(
+        id,
+        Role::Slave(SlaveInfo { offset: 0 }),
+        redis,
+        auth,
+        config,
+    );
     std::thread::spawn(move || {
         client.handle_replication(stream);
     });
