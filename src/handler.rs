@@ -667,6 +667,11 @@ impl Handler {
             {
                 self.handle_acl_getuser(stream, name)
             }
+            [cmd, subcmd, name, pwd]
+                if cmd.eq_ignore_ascii_case("ACL") && subcmd.eq_ignore_ascii_case("SETUSER") =>
+            {
+                self.handle_acl_setuser(stream, name, pwd)
+            }
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
             }
@@ -1454,9 +1459,33 @@ impl Handler {
         write!(&mut out, "*4\r\n$5\r\nflags\r\n").unwrap();
         let enabled_flags = self.user.enabled_flags();
         out.extend_from_slice(&encode_slice(&enabled_flags));
-        write!(&mut out, "$9\r\npasswords\r\n*0\r\n").unwrap();
+        write!(&mut out, "$9\r\npasswords\r\n").unwrap();
+        // TODO: should pwd Option is enough? nopass is redundant?
+        if self.user.nopass() {
+            write!(&mut out, "*0\r\n").unwrap();
+        } else {
+            let hash = hex::encode(self.user.pwd().unwrap());
+            out.extend_from_slice(&encode_slice(&vec![hash]));
+        }
         stream.write_all(&out)
     }
+    fn handle_acl_setuser(
+        &mut self,
+        stream: &mut TcpStream,
+        name: &String,
+        pwd: &String,
+    ) -> io::Result<()> {
+        if name != &self.user.name() {
+            return write_err(stream, "username not maching");
+        }
+        let Some(pwd) = pwd.strip_prefix(">") else {
+            return write_err(stream, "need > rule for password");
+        };
+        let hash = self.auth.set_pwd(name, pwd);
+        self.user.set_pwd(hash);
+        stream.write_all(b"+OK\r\n")
+    }
+
     fn cleanup_pubsub(&mut self) {
         if self.pubsub_tx.is_some() {
             self.pubsub_tx.take();

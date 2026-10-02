@@ -29,6 +29,7 @@ impl AuthFlags {
 
 pub struct User {
     name: String,
+    pwd: Option<[u8; 32]>,
     flags: AuthFlags,
 }
 
@@ -36,11 +37,22 @@ impl User {
     pub fn new(name: String) -> Self {
         Self {
             name,
+            pwd: None,
             flags: AuthFlags { nopass: false },
         }
     }
     pub fn set_nopass(&mut self) {
         self.flags.nopass = true
+    }
+    pub fn nopass(&self) -> bool {
+        self.flags.nopass
+    }
+    pub fn set_pwd(&mut self, pwd: [u8; 32]) {
+        self.pwd = Some(pwd);
+        self.flags.nopass = false;
+    }
+    pub fn pwd(&mut self) -> Option<[u8; 32]> {
+        self.pwd.clone()
     }
     pub fn name(&self) -> String {
         self.name.clone()
@@ -68,8 +80,10 @@ impl Auth {
         return &hash_pwd(pwd) == current_hash;
     }
 
-    pub fn set_pwd(&mut self, name: &str, pwd: &str) {
+    pub fn set_pwd(&self, name: &str, pwd: &str) -> [u8; 32] {
         let mut acl = self.acl.write().unwrap();
-        acl.insert(name.to_string(), hash_pwd(pwd));
+        let hash = hash_pwd(pwd);
+        acl.insert(name.to_string(), hash.clone());
+        hash
     }
 }
