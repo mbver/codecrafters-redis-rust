@@ -629,6 +629,7 @@ impl Redis {
         let end = zset.card() - 1;
         for Member { name, score } in zset.range(0, end as isize) {
             let point = decode(score as u64);
+            println!("====== dist: {}, now: {}", dist, center.dist(&point));
             if center.dist(&point) <= dist {
                 result.push(name.clone());
             }
@@ -744,5 +745,61 @@ mod tests {
         assert!(score.is_some());
         let score = score.unwrap();
         assert_eq!(score, 2596566547861250.0);
+    }
+    #[test]
+    fn test_geosearch() {
+        struct Case {
+            key: String,
+            longitude: f64,
+            latitude: f64,
+            location: String,
+        }
+        let key = "pear".to_string();
+        let cases = vec![
+            Case {
+                key: key.clone(),
+                longitude: -61.35439373121466,
+                latitude: -49.46962517075173,
+                location: "pear".to_string(),
+            },
+            Case {
+                key: key.clone(),
+                longitude: -86.72461980673307,
+                latitude: 41.022853580535745,
+                location: "apple".to_string(),
+            },
+            Case {
+                key: key.clone(),
+                longitude: -37.89046918908425,
+                latitude: 4.852560821165332,
+                location: "strawberry".to_string(),
+            },
+            Case {
+                key: key.clone(),
+                longitude: -77.5325507875963,
+                latitude: -74.51677327350947,
+                location: "banana".to_string(),
+            },
+        ];
+        let mut redis = Redis::new();
+        for case in cases {
+            let res = redis.geo_add(&case.key, case.longitude, case.latitude, &case.location);
+            assert!(res.is_ok());
+        }
+        let res = redis.z_card(&key);
+        assert!(res.is_ok());
+        let n = res.unwrap();
+        assert!(n.is_some());
+        let n = n.unwrap();
+        assert_eq!(n, 4);
+        let res = redis.geo_search(
+            &key,
+            -65.87550837865707,
+            -19.527746010640033,
+            2515933.1205795305,
+        );
+        assert!(res.is_ok());
+        let res = res.unwrap();
+        println!("======== res: {:?}", res);
     }
 }
