@@ -13,6 +13,43 @@ fn hash_pwd(pwd: &str) -> [u8; 32] {
     digest.into()
 }
 
+struct AuthFlags {
+    nopass: bool,
+}
+
+impl AuthFlags {
+    fn enabled(&self) -> Vec<String> {
+        let mut res = Vec::new();
+        if self.nopass {
+            res.push("nopass".to_string());
+        }
+        res
+    }
+}
+
+pub struct User {
+    name: String,
+    flags: AuthFlags,
+}
+
+impl User {
+    pub fn new(name: String) -> Self {
+        Self {
+            name,
+            flags: AuthFlags { nopass: false },
+        }
+    }
+    pub fn set_nopass(&mut self) {
+        self.flags.nopass = true
+    }
+    pub fn name(&self) -> String {
+        self.name.clone()
+    }
+    pub fn enabled_flags(&self) -> Vec<String> {
+        self.flags.enabled()
+    }
+}
+
 impl Auth {
     pub fn new() -> Self {
         Self {

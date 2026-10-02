@@ -14,7 +14,7 @@ use std::{
 
 use std::fmt::Write as FmtWrite;
 
-use crate::auth::{Auth, DEFAULT_USER};
+use crate::auth::{Auth, DEFAULT_USER, User};
 use crate::config::Config;
 use crate::fatal;
 use crate::helper::{encode_geopos_res, encode_slice, write_err, write_slice_resp};
@@ -277,7 +277,7 @@ pub struct Handler {
     watch_list: HashMap<String, u64>,
     config: Config,
     pubsub_tx: Option<Sender<WriteMsg>>,
-    user_name: String,
+    user: User,
     is_authenticated: bool,
 }
 
@@ -339,7 +339,7 @@ impl Handler {
             watch_list: HashMap::new(),
             config,
             pubsub_tx: None,
-            user_name: DEFAULT_USER.to_string(),
+            user: User::new(DEFAULT_USER.to_string()),
             is_authenticated: false,
         }
     }
@@ -358,12 +358,13 @@ impl Handler {
                 && self.auth.auth(name, pwd)
             {
                 self.is_authenticated = true;
-                self.user_name = name.to_string();
+                self.user = User::new(name.to_string());
             }
             // check authetication later
             if !self.is_authenticated && self.auth.default_auth() {
                 self.is_authenticated = true;
-                self.user_name = DEFAULT_USER.to_string(); // TODO: initial user name is redundant?
+                self.user = User::new(DEFAULT_USER.to_string()); // TODO: initial user name is redundant?
+                self.user.set_nopass();
             }
             if !self.is_authenticated {
                 if let Err(e) = write_err(&mut stream, "-ERR: NOAUTH Authentication required.") {
@@ -1442,18 +1443,18 @@ impl Handler {
         }
     }
     fn handle_acl_whoami(&mut self, stream: &mut TcpStream) -> io::Result<()> {
-        write!(
-            stream,
-            "${}\r\n{}\r\n",
-            self.user_name.len(),
-            &self.user_name
-        )
+        let name = self.user.name();
+        write!(stream, "${}\r\n{}\r\n", name.len(), name,)
     }
     fn handle_acl_getuser(&mut self, stream: &mut TcpStream, name: &String) -> io::Result<()> {
-        if name != &self.user_name {
+        if name != &self.user.name() {
             return write_err(stream, "user name not match");
         }
-        write!(stream, "*2\r\n$5\r\nflags\r\n*0\r\n")
+        let mut out = Vec::new();
+        write!(&mut out, "*2\r\n$5\r\nflags\r\n").unwrap();
+        let enabled_flags = self.user.enabled_flags();
+        out.extend_from_slice(&encode_slice(&enabled_flags));
+        stream.write_all(&out)
     }
     fn cleanup_pubsub(&mut self) {
         if self.pubsub_tx.is_some() {
