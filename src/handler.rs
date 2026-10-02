@@ -661,6 +661,11 @@ impl Handler {
             {
                 self.handle_acl_whoami(stream)
             }
+            [cmd, subcmd, name]
+                if cmd.eq_ignore_ascii_case("ACL") && subcmd.eq_ignore_ascii_case("GETUSER") =>
+            {
+                self.handle_acl_getuser(stream, name)
+            }
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
             }
@@ -1444,7 +1449,12 @@ impl Handler {
             &self.user_name
         )
     }
-
+    fn handle_acl_getuser(&mut self, stream: &mut TcpStream, name: &String) -> io::Result<()> {
+        if name != &self.user_name {
+            return write_err(stream, "user name not match");
+        }
+        write!(stream, "*2\r\n$5\r\nflags\r\n*0\r\n")
+    }
     fn cleanup_pubsub(&mut self) {
         if self.pubsub_tx.is_some() {
             self.pubsub_tx.take();
