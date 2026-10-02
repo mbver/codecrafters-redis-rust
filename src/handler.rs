@@ -1451,9 +1451,10 @@ impl Handler {
             return write_err(stream, "user name not match");
         }
         let mut out = Vec::new();
-        write!(&mut out, "*2\r\n$5\r\nflags\r\n").unwrap();
+        write!(&mut out, "*4\r\n$5\r\nflags\r\n").unwrap();
         let enabled_flags = self.user.enabled_flags();
         out.extend_from_slice(&encode_slice(&enabled_flags));
+        write!(&mut out, "$9\r\npasswords\r\n*0\r\n").unwrap();
         stream.write_all(&out)
     }
     fn cleanup_pubsub(&mut self) {
