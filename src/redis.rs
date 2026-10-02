@@ -597,6 +597,7 @@ impl Redis {
         second: &String,
     ) -> Result<Option<f64>, RedisError> {
         let Some(zset) = self.get_mut_zset(key)? else {
+            // TODO: don't use mut zset for this
             return Ok(None);
         };
         let Some(first_score) = zset.score(first) else {
@@ -605,8 +606,34 @@ impl Redis {
         let Some(second_score) = zset.score(second) else {
             return Ok(None);
         };
-        let dist = decode(first_score as u64).dist(decode(second_score as u64));
+        let dist = decode(first_score as u64).dist(&decode(second_score as u64));
         Ok(Some(dist))
+    }
+
+    // TODO: find a search ranges divided by the regions and search from the start of each range
+    pub fn geo_search(
+        &mut self,
+        key: &String,
+        longitude: f64,
+        latitude: f64,
+        dist: f64,
+    ) -> Result<Vec<String>, RedisError> {
+        let mut result = Vec::new();
+        let Some(zset) = self.get_mut_zset(key)? else {
+            return Ok(result);
+        };
+        let center = GeoPoint {
+            longitude,
+            latitude,
+        };
+        let end = zset.card() - 1;
+        for Member { name, score } in zset.range(0, end as isize) {
+            let point = decode(score as u64);
+            if center.dist(&point) <= dist {
+                result.push(name.clone());
+            }
+        }
+        Ok(result)
     }
 
     pub fn incr(&mut self, key: &str) -> Result<u64, RedisError> {

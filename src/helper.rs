@@ -37,7 +37,11 @@ pub fn is_allowed_in_subscribed_mode(command: &[String]) -> bool {
     false
 }
 
+// TODO: this is not only for command
 pub fn encode_slice(command: &[String]) -> Vec<u8> {
+    if command.len() == 0 {
+        return "*-1\r\n".as_bytes().to_vec();
+    }
     let mut out = Vec::new();
     write!(&mut out, "*{}\r\n", command.len()).unwrap();
     for arg in command {

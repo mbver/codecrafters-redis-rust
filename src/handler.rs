@@ -620,6 +620,11 @@ impl Handler {
             [cmd, key, first, second] if cmd.eq_ignore_ascii_case("GEODIST") => {
                 self.handle_geodist(stream, key, first, second)
             }
+            [cmd, key, mode, longitude, latitude, option, dist, unit]
+                if cmd.eq_ignore_ascii_case("GEOSEARCH") =>
+            {
+                self.handle_geosearch(stream, key, mode, longitude, latitude, option, dist, unit)
+            }
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
             }
@@ -1364,6 +1369,37 @@ impl Handler {
         }
     }
 
+    fn handle_geosearch(
+        &mut self,
+        stream: &mut TcpStream,
+        key: &String,
+        mode: &String,
+        longitude: &String,
+        latitude: &String,
+        option: &String,
+        dist: &String,
+        unit: &String,
+    ) -> io::Result<()> {
+        if !mode.eq_ignore_ascii_case("FROMLONLAT") || !option.eq_ignore_ascii_case("BYRADIUS") {
+            return write_err(stream, "invalid mode or option");
+        }
+        let mut dist: f64 = dist.parse().map_err(io_invalid_data)?;
+        match unit.as_str() {
+            "m" => {}
+            "km" => {
+                dist *= 100.0;
+            }
+            "mi" => dist *= 1609.344,
+            _ => return Err(io_invalid_data("invalid unit")),
+        }
+        let longitude: f64 = longitude.parse().map_err(io_invalid_data)?;
+        let latitude: f64 = latitude.parse().map_err(io_invalid_data)?;
+        let res = self.redis.lock().geo_search(key, longitude, latitude, dist);
+        match res {
+            Ok(locations) => stream.write_all(&encode_slice(&locations)),
+            Err(e) => write_err(stream, e),
+        }
+    }
     fn cleanup_pubsub(&mut self) {
         if self.pubsub_tx.is_some() {
             self.pubsub_tx.take();

@@ -85,7 +85,7 @@ pub struct GeoPoint {
 }
 
 impl GeoPoint {
-    pub fn dist(&self, other: Self) -> f64 {
+    pub fn dist(&self, other: &Self) -> f64 {
         let v = ((other.longitude.to_radians() - self.longitude.to_radians()) / 2.0).sin();
         if v == 0.0 {
             return EARTH_RADIUS_METER
