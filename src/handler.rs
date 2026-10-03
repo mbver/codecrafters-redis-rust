@@ -394,7 +394,7 @@ impl Handler {
             self.user.set_pwd(self.auth.pwd_of(name).unwrap());
             return stream.write_all(b"+OK\r\n");
         }
-        stream.write_all(b"-ERR WRONGPASS invalid username-password pair or user is disabled.")
+        stream.write_all(b"-WRONGPASS invalid username-password pair or user is disabled.\r\n")
     }
 
     fn handle_normal(&mut self, mut stream: TcpStream, command: Vec<String>) -> Next {
