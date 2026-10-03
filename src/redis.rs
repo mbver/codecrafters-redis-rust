@@ -676,6 +676,12 @@ impl Redis {
         Ok(value)
     }
 
+    pub fn strlen(&mut self, key: &str) -> Result<usize, RedisError> {
+        let Some(v) = self.get(key)? else {
+            return Ok(0);
+        };
+        return Ok(v.len());
+    }
     pub fn incr(&mut self, key: &str) -> Result<u64, RedisError> {
         match self.get_mut_number(key)? {
             Some(num) => {

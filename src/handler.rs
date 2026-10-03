@@ -696,6 +696,7 @@ impl Handler {
             [cmd, key, offset] if cmd.eq_ignore_ascii_case("GETBIT") => {
                 self.handle_getbit(stream, key, offset)
             }
+            [cmd, key] if cmd.eq_ignore_ascii_case("STRLEN") => self.handle_strlen(stream, key),
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
             }
@@ -1542,6 +1543,13 @@ impl Handler {
     ) -> io::Result<()> {
         let offset: usize = offset.parse().map_err(io_invalid_data)?;
         let res = self.redis.lock().get_bit(key, offset);
+        match res {
+            Ok(n) => write!(stream, ":{}\r\n", n),
+            Err(e) => write_err(stream, e),
+        }
+    }
+    fn handle_strlen(&mut self, stream: &mut TcpStream, key: &String) -> io::Result<()> {
+        let res = self.redis.lock().strlen(key);
         match res {
             Ok(n) => write!(stream, ":{}\r\n", n),
             Err(e) => write_err(stream, e),
