@@ -355,10 +355,10 @@ impl Handler {
             // combining 2 if-let and conditional
             if let [cmd, name, pwd] = command.as_slice()
                 && cmd.eq_ignore_ascii_case("AUTH")
-                && self.auth.auth(name, pwd)
+                && let Err(e) = self.handle_auth(&mut stream, name, pwd)
             {
-                self.is_authenticated = true;
-                self.user = User::new(name.to_string());
+                eprintln!("error handling auth: {e}");
+                return Next::Done;
             }
             // check authetication later
             if !self.is_authenticated && self.auth.default_auth() {
@@ -380,6 +380,21 @@ impl Handler {
             self.handle_normal(stream, command)
         });
         self.cleanup_pubsub();
+    }
+
+    fn handle_auth(
+        &mut self,
+        stream: &mut TcpStream,
+        name: &String,
+        pwd: &String,
+    ) -> io::Result<()> {
+        if self.auth.auth(name, pwd) {
+            self.is_authenticated = true;
+            self.user = User::new(name.to_string());
+            self.user.set_pwd(self.auth.pwd_of(name).unwrap());
+            return stream.write_all(b"+OK\r\n");
+        }
+        stream.write_all(b"-ERR WRONGPASS invalid username-password pair or user is disabled.")
     }
 
     fn handle_normal(&mut self, mut stream: TcpStream, command: Vec<String>) -> Next {

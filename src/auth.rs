@@ -86,4 +86,8 @@ impl Auth {
         acl.insert(name.to_string(), hash.clone());
         hash
     }
+    pub fn pwd_of(&self, name: &str) -> Option<[u8; 32]> {
+        let acl = self.acl.read().unwrap();
+        acl.get(name).cloned()
+    }
 }
