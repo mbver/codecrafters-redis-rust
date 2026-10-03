@@ -318,6 +318,12 @@ impl Redis {
             _ => Err(RedisError::WrongType),
         }
     }
+    fn get_mut_string_or_insert(&mut self, key: &str) -> Result<&mut Vec<u8>, RedisError> {
+        match self.get_mut_value_or_insert(key, || Value::String(Vec::new())) {
+            Value::String(v) => Ok(v),
+            _ => Err(RedisError::WrongType),
+        }
+    }
 
     fn get_mut_value(&mut self, key: &str) -> Option<&mut Value> {
         let expired = self
@@ -636,6 +642,24 @@ impl Redis {
             }
         }
         Ok(result)
+    }
+
+    pub fn set_bit(&mut self, key: &str, offset: usize, is_set: bool) -> Result<u8, RedisError> {
+        let v = self.get_mut_string_or_insert(key)?;
+        let byte_idx = offset / 8;
+        if byte_idx > v.len() {
+            v.resize(byte_idx + 1, 0);
+        }
+        let bit_idx = 7 - offset % 8; // convert redis bit position to normal interger bit position
+        let mask = 1 << bit_idx;
+        let prev = (v[byte_idx] & mask) >> bit_idx;
+        if is_set {
+            v[byte_idx] |= mask
+        } else {
+            v[byte_idx] &= !mask
+        }
+
+        Ok(prev)
     }
 
     pub fn incr(&mut self, key: &str) -> Result<u64, RedisError> {
