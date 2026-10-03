@@ -370,7 +370,7 @@ impl Handler {
                 self.user.set_nopass();
             }
             if !self.is_authenticated {
-                if let Err(e) = write_err(&mut stream, "-NOAUTH Authentication required.") {
+                if let Err(e) = write_err(&mut stream, "NOAUTH Authentication required.") {
                     eprintln!("error writing to stream: {e}");
                     return Next::Done;
                 }

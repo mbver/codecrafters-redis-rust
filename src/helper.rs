@@ -68,5 +68,5 @@ pub fn write_err<E>(stream: &mut TcpStream, e: E) -> io::Result<()>
 where
     E: fmt::Display,
 {
-    write!(stream, "-ERR {e}\r\n")
+    write!(stream, "-{e}\r\n")
 }
