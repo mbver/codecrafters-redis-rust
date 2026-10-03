@@ -647,7 +647,7 @@ impl Redis {
     pub fn set_bit(&mut self, key: &str, offset: usize, is_set: bool) -> Result<u8, RedisError> {
         let v = self.get_mut_string_or_insert(key)?;
         let byte_idx = offset / 8;
-        if byte_idx > v.len() {
+        if byte_idx >= v.len() {
             v.resize(byte_idx + 1, 0);
         }
         let bit_idx = 7 - offset % 8; // convert redis bit position to normal interger bit position
