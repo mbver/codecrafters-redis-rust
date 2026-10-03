@@ -188,7 +188,7 @@ impl Stream {
 
 pub enum Value {
     Integer(u64),
-    String(String),
+    String(Vec<u8>),
     List(VecDeque<String>),
     Stream(Stream),
     Zset(Zset),
@@ -228,7 +228,9 @@ impl Redis {
         self.incr_version(&key);
         match value.parse::<u64>() {
             Ok(i) => self.store.insert(key.clone(), Value::Integer(i)),
-            Err(_) => self.store.insert(key.clone(), Value::String(value)),
+            Err(_) => self
+                .store
+                .insert(key.clone(), Value::String(value.as_bytes().to_vec())),
         };
         match deadline {
             Some(deadline) => {
@@ -254,10 +256,10 @@ impl Redis {
         self.store.get(key)
     }
 
-    pub fn get(&mut self, key: &str) -> Result<Option<String>, RedisError> {
+    pub fn get(&mut self, key: &str) -> Result<Option<Vec<u8>>, RedisError> {
         match self.get_value(key) {
             Some(Value::String(s)) => Ok(Some(s.clone())),
-            Some(Value::Integer(n)) => Ok(Some(n.to_string())),
+            Some(Value::Integer(n)) => Ok(Some(n.to_string().into_bytes())),
             Some(_) => Err(RedisError::WrongType),
             None => Ok(None),
         }

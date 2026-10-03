@@ -745,8 +745,11 @@ impl Handler {
         };
         match res {
             Ok(Some(s)) => {
-                let v = format!("${}\r\n{}\r\n", s.len(), s.to_string());
-                stream.write_all(v.as_bytes())
+                let mut out = Vec::new();
+                write!(&mut out, "${}\r\n", s.len()).unwrap();
+                out.extend_from_slice(&s);
+                out.extend_from_slice(b"\r\n");
+                stream.write_all(&out)
             }
             Ok(None) => stream.write_all(b"$-1\r\n"),
             Err(e) => write!(stream, "-ERR {e}\r\n"),
