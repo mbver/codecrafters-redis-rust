@@ -695,6 +695,9 @@ impl Redis {
             Some((start, end)) => (start, end),
             None => (0, v.len()),
         };
+        if end < start {
+            return Ok(0);
+        }
         // we can use byte &= (byte-1) trick to clear the lowest set bit and count the number of iteration
         // for example, the lowest set bit is 100, byte -1 produce 011 and & produces 0
         let count: u32 = v
