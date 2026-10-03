@@ -682,6 +682,17 @@ impl Redis {
         };
         return Ok(v.len());
     }
+
+    pub fn bitcount(&mut self, key: &str) -> Result<usize, RedisError> {
+        let Some(v) = self.get(key)? else {
+            return Ok(0);
+        };
+        // we can use byte &= (byte-1) trick to clear the lowest set bit and count the number of iteration
+        // for example, the lowest set bit is 100, byte -1 produce 011 and & produces 0
+        let count: u32 = v.iter().map(|b| b.count_ones()).sum();
+        Ok(count as usize)
+    }
+
     pub fn incr(&mut self, key: &str) -> Result<u64, RedisError> {
         match self.get_mut_number(key)? {
             Some(num) => {
