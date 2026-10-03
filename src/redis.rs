@@ -662,6 +662,20 @@ impl Redis {
         Ok(prev)
     }
 
+    pub fn get_bit(&mut self, key: &str, offset: usize) -> Result<u8, RedisError> {
+        let Some(v) = self.get(key)? else {
+            return Ok(0);
+        };
+        let byte_idx = offset / 8;
+        if byte_idx >= v.len() {
+            return Ok(0);
+        }
+        let bit_idx = 7 - offset % 8;
+        let mask = 1 << bit_idx;
+        let value = (v[byte_idx] & mask) >> bit_idx;
+        Ok(value)
+    }
+
     pub fn incr(&mut self, key: &str) -> Result<u64, RedisError> {
         match self.get_mut_number(key)? {
             Some(num) => {
