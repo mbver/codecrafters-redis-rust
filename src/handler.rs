@@ -697,7 +697,9 @@ impl Handler {
                 self.handle_getbit(stream, key, offset)
             }
             [cmd, key] if cmd.eq_ignore_ascii_case("STRLEN") => self.handle_strlen(stream, key),
-            [cmd, key] if cmd.eq_ignore_ascii_case("BITCOUNT") => self.handle_bitcount(stream, key),
+            [cmd, key, args @ ..] if cmd.eq_ignore_ascii_case("BITCOUNT") => {
+                self.handle_bitcount(stream, key, args)
+            }
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
             }
@@ -1556,8 +1558,24 @@ impl Handler {
             Err(e) => write_err(stream, e),
         }
     }
-    fn handle_bitcount(&mut self, stream: &mut TcpStream, key: &String) -> io::Result<()> {
-        let res = self.redis.lock().bitcount(key);
+    fn handle_bitcount(
+        &mut self,
+        stream: &mut TcpStream,
+        key: &String,
+        args: &[String],
+    ) -> io::Result<()> {
+        let start_end = match args {
+            [start, end] => {
+                let start: usize = start.parse().map_err(io_invalid_data)?;
+                let end: usize = end.parse().map_err(io_invalid_data)?;
+                Some((start, end + 1)) // end idx is inclusive
+            }
+            [] => None,
+            _ => {
+                return Err(io_invalid_data("invalid bitcount range"));
+            }
+        };
+        let res = self.redis.lock().bitcount(key, start_end);
         match res {
             Ok(n) => write!(stream, ":{}\r\n", n),
             Err(e) => write_err(stream, e),
