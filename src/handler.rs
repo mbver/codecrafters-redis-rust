@@ -355,10 +355,13 @@ impl Handler {
             // combining 2 if-let and conditional
             if let [cmd, name, pwd] = command.as_slice()
                 && cmd.eq_ignore_ascii_case("AUTH")
-                && let Err(e) = self.handle_auth(&mut stream, name, pwd)
             {
-                eprintln!("error handling auth: {e}");
-                return Next::Done;
+                if let Err(e) = self.handle_auth(&mut stream, name, pwd) {
+                    eprintln!("error handling auth: {e}");
+                    return Next::Done;
+                } else {
+                    return Next::Continue(stream);
+                }
             }
             // check authetication later
             if !self.is_authenticated && self.auth.default_auth() {
