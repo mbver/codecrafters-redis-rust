@@ -720,11 +720,15 @@ impl Redis {
         key2: &str,
     ) -> Result<usize, RedisError> {
         // TODO: use references instead? but how we should resize?
-        let Some(mut v1) = self.get(key1)? else {
-            return Ok(0);
+        let mut v1 = if let Some(v1) = self.get(key1)? {
+            v1
+        } else {
+            Vec::new()
         };
-        let Some(mut v2) = self.get(key2)? else {
-            return Ok(0);
+        let mut v2 = if let Some(v2) = self.get(key2)? {
+            v2
+        } else {
+            Vec::new()
         };
         let size = v1.len().max(v2.len());
         v1.resize(size, 0);
