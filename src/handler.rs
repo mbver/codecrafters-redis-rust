@@ -21,7 +21,7 @@ use crate::helper::{encode_geopos_res, encode_slice, write_err, write_slice_resp
 use crate::helper::{io_invalid_data, is_allowed_in_subscribed_mode};
 use crate::parser::{Command, Parser};
 use crate::pubsub::WriteMsg;
-use crate::redis::{EntryId, Redis, RedisError, StreamEntry, Value};
+use crate::redis::{BitOp, EntryId, Redis, RedisError, StreamEntry, Value};
 
 pub struct RedisShared {
     redis: Mutex<Redis>,
@@ -699,6 +699,9 @@ impl Handler {
             [cmd, key] if cmd.eq_ignore_ascii_case("STRLEN") => self.handle_strlen(stream, key),
             [cmd, key, args @ ..] if cmd.eq_ignore_ascii_case("BITCOUNT") => {
                 self.handle_bitcount(stream, key, args)
+            }
+            [cmd, subcmd, dest, key1, key2] if cmd.eq_ignore_ascii_case("BITOP") => {
+                self.handle_bitop(stream, subcmd, dest, key1, key2)
             }
             _ => {
                 return stream.write_all(b"-ERR unknown command\r\n");
@@ -1576,6 +1579,25 @@ impl Handler {
             }
         };
         let res = self.redis.lock().bitcount(key, start_end);
+        match res {
+            Ok(n) => write!(stream, ":{}\r\n", n),
+            Err(e) => write_err(stream, e),
+        }
+    }
+    fn handle_bitop(
+        &mut self,
+        stream: &mut TcpStream,
+        subcmd: &String,
+        dest: &String,
+        key1: &String,
+        key2: &String,
+    ) -> io::Result<()> {
+        let op = match subcmd.as_str() {
+            "AND" => BitOp::And,
+            "OR" => BitOp::Or,
+            _ => return Err(io_invalid_data("invalid op")),
+        };
+        let res = self.redis.lock().bit_op(op, dest, key1, key2);
         match res {
             Ok(n) => write!(stream, ":{}\r\n", n),
             Err(e) => write_err(stream, e),

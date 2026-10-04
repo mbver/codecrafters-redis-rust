@@ -24,6 +24,10 @@ pub enum RedisError {
     WriteAofError(io::Error),
     ZsetError(ZsetError),
 }
+pub enum BitOp {
+    And,
+    Or,
+}
 
 impl Display for RedisError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -264,7 +268,6 @@ impl Redis {
             None => Ok(None),
         }
     }
-
     pub fn get_list(&mut self, key: &str) -> Result<Option<&VecDeque<String>>, RedisError> {
         match self.get_mut_value(key) {
             Some(Value::List(l)) => Ok(Some(l)),
@@ -709,6 +712,35 @@ impl Redis {
         Ok(count as usize)
     }
 
+    pub fn bit_op(
+        &mut self,
+        op: BitOp,
+        dest: &str,
+        key1: &str,
+        key2: &str,
+    ) -> Result<usize, RedisError> {
+        // TODO: use references instead? but how we should resize?
+        let Some(mut v1) = self.get(key1)? else {
+            return Ok(0);
+        };
+        let Some(mut v2) = self.get(key2)? else {
+            return Ok(0);
+        };
+        let size = v1.len().max(v2.len());
+        v1.resize(size, 0);
+        v2.resize(size, 0);
+
+        let res: Vec<u8> = v1
+            .iter()
+            .zip(v2)
+            .map(|(x, y)| match op {
+                BitOp::And => x & y,
+                BitOp::Or => x | y,
+            })
+            .collect();
+        self.store.insert(dest.to_string(), Value::String(res));
+        Ok(size)
+    }
     pub fn incr(&mut self, key: &str) -> Result<u64, RedisError> {
         match self.get_mut_number(key)? {
             Some(num) => {
